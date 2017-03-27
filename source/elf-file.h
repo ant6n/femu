@@ -26,19 +26,19 @@ namespace elf {
         
         /** write elf to file, returns true for success */
         bool writeToFile(const std::string& path);
-
+	
         void addSegment();
         
         /** allows modifying the header - this will only be valid until the next modication operation */
-        Elf32_Ehdr& getHeader();
-        const Elf32_Ehdr& getHeader() const;
+        Elf32_Ehdr& header();
+        const Elf32_Ehdr& header() const;
         
-        char* getData();
-        const char* getData() const;
+        char* data();
+        const char* data() const;
 
-	size_t getSize() const;
+	size_t size() const;
 	
-	int getNumSegments() const;
+	int numSegments() const;
         Segment getSegment(int programHeaderIndex);
         const Segment getSegment(int programHeaderIndex) const;
         
@@ -49,8 +49,8 @@ namespace elf {
     private:
         ElfFile(std::pair<std::shared_ptr<char>, std::ifstream::pos_type> dataAndSize);
         
-        std::shared_ptr<char> data;
-        size_t size;
+        std::shared_ptr<char> _data;
+        size_t _size;
         Elf32_Ehdr* elfHeader;
         
         friend class Segment;
@@ -60,8 +60,8 @@ namespace elf {
     /** represents the view of a segment within an elf file, defined in the Program Header */
     class Segment {
     public:
-        Elf32_Phdr& getProgramHeader();
-        const Elf32_Phdr& getProgramHeader() const;
+        Elf32_Phdr& header();
+        const Elf32_Phdr& header() const;
         
     private:
         ElfFile& elfFile;

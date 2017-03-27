@@ -16,8 +16,11 @@
 
 const std::string emulatorElfPath = "femu-inject";
 
+elf::ElfFile injectElf(const elf::ElfFile& inputElf, const elf::ElfFile& injectElf);
+elf::ElfFile injectData(const elf::ElfFile& elf, const char* data, size_t size);
+
 /** returns the smallest number n >= offset s.t. n % alignment == 0 */
-static int alignOffset(int offset, int alignment) {
+static size_t align(int offset, int alignment) {
     printf("alignoffet: %d, %d\n", offset, alignment);
     auto result = ((offset + (alignment - 1)) / alignment) * alignment;
     printf("result: %d\n", result);
@@ -25,102 +28,95 @@ static int alignOffset(int offset, int alignment) {
 }
 
 static bool injectEmulator(const std::string& inputPath, const std::string& outputPath) {
-    std::cout << "load file: '" <<inputPath << "'" << std::endl;
-    elf::ElfFile elf(inputPath);
-    elf::ElfFile injectElf(emulatorElfPath);
+    elf::ElfFile inputElf(inputPath);
+    elf::ElfFile emuElf(emulatorElfPath);
     
     printf("elf:\n");
-    //elf.printHeader();
-    elf.printProgramHeaders();
+    //inputElf.printHeader();
+    inputElf.printProgramHeaders();
     printf("inject:\n");
     //injectElf.printHeader();
-    injectElf.printProgramHeaders();
+    emuElf.printProgramHeaders();
     
-    // determine new elf file size, and check overlap
-    size_t copiedSegmentSize = 0;
-    int numInjectSegments = injectElf.getNumSegments();
-    int numElfSegments = elf.getNumSegments();
-    for (int i = 0; i < numInjectSegments; i++) {
+    elf::ElfFile outputElf = injectElf(inputElf, emuElf);
+    std::cout << "write file: " << outputPath << std::endl;
+    return outputElf.writeToFile(outputPath);
+}
+
+elf::ElfFile injectElf(const elf::ElfFile& inputElf, const elf::ElfFile& injectElf) {
+    
+    // get alignment of inect elf
+    int injectElfAlignment = 1;
+    for (int i = 0; i < injectElf.numSegments(); i++) {
         auto segment = injectElf.getSegment(i);
-	copiedSegmentSize += segment.getProgramHeader().p_filesz;
 	// TODO - check if there's an overlap with segments in the given elf
+	if (segment.header().p_type == PT_LOAD and
+	    segment.header().p_filesz > 0) {
+  	    // TODO check power of two
+  	    injectElfAlignment = std::max(injectElfAlignment,
+					  static_cast<int>(segment.header().p_align));
+	}
     }
-    size_t newProgramHeaderSize = elf.getHeader().e_phentsize*(numInjectSegments + numElfSegments);
-    size_t newHeaderOffset = alignOffset(elf.getSize() + copiedSegmentSize, alignof(Elf32_Phdr));
-    size_t newSize = newHeaderOffset + newProgramHeaderSize;
-    
+
+    // collect offsets and sizes
+    size_t injectElfOffset = align(inputElf.size(), injectElfAlignment);
+    size_t programHeaderOffset = align(injectElfOffset + injectElf.size(), alignof(Elf32_Phdr));
+    size_t newProgramHeaderSize = inputElf.header().e_phentsize*(inputElf.numSegments() +
+								 injectElf.numSegments());
+    size_t newSize = programHeaderOffset + newProgramHeaderSize;
     
     // create new data
     printf("new alloc: %d\n", newSize);
     char* newData = new char [newSize];
+
+    // copy elfs
+    memcpy(newData, inputElf.data(), inputElf.size());
+    memcpy(newData + injectElfOffset, injectElf.data(), injectElf.size());
     
-    // copy target elf
-    size_t offset = 0;
-    memcpy(newData + offset, elf.getData(), elf.getSize());
-    offset += elf.getSize();
+    // copy segment headers from output elf
+    size_t inputPHSize = inputElf.header().e_phentsize * inputElf.numSegments();
+    memcpy(newData + programHeaderOffset, inputElf.data() + inputElf.header().e_phoff, inputPHSize);
     
-    // copy target headers
-    size_t headerOffset = newHeaderOffset;
-    size_t elfProgramHeaderSize = elf.getHeader().e_phentsize * numElfSegments;
-    memcpy(newData + headerOffset, elf.getData() + elf.getHeader().e_phoff, elfProgramHeaderSize);
-    headerOffset += elfProgramHeaderSize;
-    int newNumSegments = numElfSegments;
-    
-    // copy segments and headers from inject elf
-    size_t copyProgramHeaderEntrySize = std::min(elf.getHeader().e_phentsize,
-						 injectElf.getHeader().e_phentsize);
-    for (int i = 0; i < numInjectSegments; i++) {
-        printf("add segment %d, offset: %d, \n", i, offset);
+    // copy program headers from inject elf
+    size_t copyPHEntrySize = std::min(inputElf.header().e_phentsize, injectElf.header().e_phentsize);
+    size_t headerOffset = programHeaderOffset + inputPHSize;
+    for (int i = 0; i < injectElf.numSegments(); i++) {
+        printf("add segment %d, offset: %d, \n", i, headerOffset);
         // copy program header entry
         auto segment = injectElf.getSegment(i);
-	memcpy(newData + headerOffset, &segment.getProgramHeader(), copyProgramHeaderEntrySize);
+	memcpy(newData + headerOffset, &segment.header(), copyPHEntrySize);
 	
         // fix program header entry
 	Elf32_Phdr* headerEntry = reinterpret_cast<Elf32_Phdr*>(newData + headerOffset);
-	headerEntry->p_offset = offset;
-
+	headerEntry->p_offset += injectElfOffset;
 	if (headerEntry->p_type != PT_LOAD) {
   	    headerEntry->p_type = PT_NULL;
 	}
 	
-	// copy segment
-        size_t segmentFileSize = segment.getProgramHeader().p_filesz;
-	if (segmentFileSize > 0) {
-	    memcpy(newData + offset,
-		   injectElf.getData() + segment.getProgramHeader().p_offset,
-		   segmentFileSize);
-	    offset += segmentFileSize;
-        }
-	
-        newNumSegments += 1;
-	headerOffset += elf.getHeader().e_phentsize;
+	headerOffset += inputElf.header().e_phentsize;
     }
-    
+        
     // create new elf and update/fix header
     std::shared_ptr<char> shared(newData);
     elf::ElfFile outElf(shared, newSize);
-    auto& outHeader = outElf.getHeader();
-    outHeader.e_machine = EM_ARM;
-    outHeader.e_phoff = newHeaderOffset;
-    outHeader.e_phnum = newNumSegments;
-    outHeader.e_entry = injectElf.getHeader().e_entry;
-    outHeader.e_shoff = 0;
-    outHeader.e_shnum = 0;
-    outHeader.e_shstrndx = 0;
+    outElf.header().e_machine = EM_ARM;
+    outElf.header().e_phoff = programHeaderOffset;
+    outElf.header().e_phnum = inputElf.numSegments() + injectElf.numSegments();
+    outElf.header().e_entry = injectElf.header().e_entry;
+    outElf.header().e_shoff = 0;
+    outElf.header().e_shnum = 0;
+    outElf.header().e_shstrndx = 0;
     
     printf("output:\n");
-    //outElf.printHeader();
+    outElf.printHeader();
     outElf.printProgramHeaders();
-    std::cout << "write file: " << outputPath << std::endl;
-    
-    return outElf.writeToFile(outputPath);  
+    return outElf;
 }
-
-
 
 int main(int argc, const char * argv[]) {
     std::string path = argv[1];
     injectEmulator(path, "modified-elf");
+    
     return 0;
 }
 

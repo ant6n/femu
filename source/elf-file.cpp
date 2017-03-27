@@ -53,8 +53,8 @@ namespace  elf {
     }
     
     ElfFile::ElfFile(std::pair<std::shared_ptr<char>, std::ifstream::pos_type> dataAndSize)
-    : data(dataAndSize.first), size(dataAndSize.second) {
-        elfHeader = reinterpret_cast<Elf32_Ehdr*>(data.get());
+    : _data(dataAndSize.first), _size(dataAndSize.second) {
+        elfHeader = reinterpret_cast<Elf32_Ehdr*>(data());
         auto ident = elfHeader->e_ident;
         bool correctMagic = (ident[0] == 0x7f and
                              ident[1] == 'E' and ident[2] == 'L' and ident[3] == 'F');
@@ -63,26 +63,26 @@ namespace  elf {
         //printf("Machine:              %X\n", elfHeader->e_machine);
     }
     
-    Elf32_Ehdr& ElfFile::getHeader() {
+    Elf32_Ehdr& ElfFile::header() {
         return *elfHeader;
     }
     
-    const Elf32_Ehdr& ElfFile::getHeader() const {
+    const Elf32_Ehdr& ElfFile::header() const {
         return *elfHeader;
     }
 
-    char* ElfFile::getData() {
-        return data.get();
+    char* ElfFile::data() {
+        return _data.get();
     }
     
-    const char* ElfFile::getData() const {
-        return data.get();
+    const char* ElfFile::data() const {
+        return _data.get();
     }
     
-    size_t ElfFile::getSize() const {
-          return size;
-    } 
-  
+    size_t ElfFile::size() const {
+          return _size;
+    }
+    
     void ElfFile::printHeader() const {
         printf("ELF Header:\n");
         printf("  Magic:   ");//7f 45 4c 46 01 01 01 00 00 00 00 00 00 00 00 00
@@ -116,8 +116,8 @@ namespace  elf {
     }
     
     
-    int ElfFile::getNumSegments() const {
-        return getHeader().e_phnum;
+    int ElfFile::numSegments() const {
+        return header().e_phnum;
     }
   
     Segment ElfFile::getSegment(int programHeaderIndex) {
@@ -130,7 +130,7 @@ namespace  elf {
     
     
     void ElfFile::printProgramHeaders() const {
-      int numHeaders = getNumSegments();
+      int numHeaders = numSegments();
         if (numHeaders == 0) {
             printf("There are no program headers in this file.\n");
         }
@@ -139,7 +139,7 @@ namespace  elf {
         printf("  Type        Offset      VirtAddr    PhysAddr    FileSiz     MemSiz      Flg  Align\n");
         for (int i = 0; i < numHeaders; i++) {
             const Segment segment = getSegment(i);
-            auto header = segment.getProgramHeader();
+            auto header = segment.header();
             
             switch (header.p_type) {
                 case PT_NULL:     printf("  PT_NULL   "); break;
@@ -174,8 +174,8 @@ namespace  elf {
             return false;
         }
 
-	printf("write: %d\n", size);
-	file.write(data.get(), size);
+	printf("write: %d\n", size());
+	file.write(data(), size());
         printf("wrote\n");
         
         if (file.fail()) {
@@ -200,24 +200,24 @@ namespace  elf {
     
     Segment::Segment(ElfFile& elfFile, int programHeaderIndex)
     : elfFile(elfFile), index(programHeaderIndex) {
-        if (programHeaderIndex >= elfFile.getHeader().e_phnum) {
+        if (programHeaderIndex >= elfFile.header().e_phnum) {
             // error
         }
     }
     
-    Elf32_Phdr& Segment::getProgramHeader() {
-        int programHeaderOffset = elfFile.getHeader().e_phoff;
-        int programHeaderSize = elfFile.getHeader().e_phentsize;
-        char* elfData = elfFile.data.get();
+    Elf32_Phdr& Segment::header() {
+        int programHeaderOffset = elfFile.header().e_phoff;
+        int programHeaderSize = elfFile.header().e_phentsize;
+        char* elfData = elfFile.data();
         char* pointer = elfData + programHeaderOffset + programHeaderSize*index;
         return *reinterpret_cast<Elf32_Phdr*>(pointer);
     }
 
-    const Elf32_Phdr& Segment::getProgramHeader() const {
+    const Elf32_Phdr& Segment::header() const {
         // TODO remove this copy
-        int programHeaderOffset = elfFile.getHeader().e_phoff;
-        int programHeaderSize = elfFile.getHeader().e_phentsize;
-        char* elfData = elfFile.data.get();
+        int programHeaderOffset = elfFile.header().e_phoff;
+        int programHeaderSize = elfFile.header().e_phentsize;
+        char* elfData = elfFile.data();
         char* pointer = elfData + programHeaderOffset + programHeaderSize*index;
         return *reinterpret_cast<const Elf32_Phdr*>(pointer);
     }
