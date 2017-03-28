@@ -6,18 +6,22 @@
 //  Copyright © 2017 Ant6n. All rights reserved.
 //
 
+// TODO - inject x86 program into emulator elf
+
 #include <iostream>
 #include <stdio.h>
 #include <sys/stat.h>
 #include "main.h"
 #include "elf-file.h"
 #include <string.h>
+#include <stdint.h>
 
 
 const std::string emulatorElfPath = "femu-inject";
 
 elf::ElfFile injectElf(const elf::ElfFile& inputElf, const elf::ElfFile& injectElf);
-elf::ElfFile injectData(const elf::ElfFile& elf, const char* data, size_t size);
+bool injectEmuData(const elf::ElfFile& inputElf, elf::ElfFile& injectElf);
+
 
 /** returns the smallest number n >= offset s.t. n % alignment == 0 */
 static size_t align(int offset, int alignment) {
@@ -37,6 +41,8 @@ static bool injectEmulator(const std::string& inputPath, const std::string& outp
     printf("inject:\n");
     //injectElf.printHeader();
     emuElf.printProgramHeaders();
+
+    if (not injectEmuData(inputElf, emuElf)) return false;
     
     elf::ElfFile outputElf = injectElf(inputElf, emuElf);
     std::cout << "write file: " << outputPath << std::endl;
@@ -113,9 +119,41 @@ elf::ElfFile injectElf(const elf::ElfFile& inputElf, const elf::ElfFile& injectE
     return outElf;
 }
 
+
+/** inject emulator data into the inject elf */
+bool injectEmuData(const elf::ElfFile& inputElf, elf::ElfFile& injectElf) {
+    // find R/W load segment with the magic number
+    uintptr_t MAGIC = 0xbe61be61;
+    for (int i = 0; i < injectElf.numSegments(); i++) {
+        auto segment = injectElf.getSegment(i);
+	if (segment.header().p_type == PT_LOAD and
+	    segment.header().p_flags == (PF_R | PF_W)) {
+	    printf("searching for entry point in segment %d\n", i);
+	    uintptr_t* pointer = (uintptr_t*)(injectElf.data() + segment.header().p_offset);
+	    i = 0;
+	    while (*pointer != MAGIC) {
+	        if (i > segment.header().p_filesz) {
+		  std::cerr << "entrypoint MAGIC not found in emu!" << std::endl;
+		  return false;
+		}
+		pointer++;
+		i += sizeof(uintptr_t);
+	    }
+	    printf("magic entrypoint found at offset: %d\n", i * sizeof(uintptr_t));
+	    *pointer = inputElf.header().e_entry;
+	    return true;
+	}
+    }
+    return false;
+}
+
+
 int main(int argc, const char * argv[]) {
     std::string path = argv[1];
-    injectEmulator(path, "modified-elf");
+    if (not injectEmulator(path, "modified-elf")) {
+      std::cerr << "failed to inject emulator into program" << std::endl;
+      exit(EXIT_FAILURE);
+    }
     
     return 0;
 }

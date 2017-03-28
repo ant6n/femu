@@ -1,3 +1,5 @@
+char* entryPoint = (char*)0xbe61be61;
+
 
 void write(int file, const char* s, int numChars) {
   asm volatile("mov r0, %[file]\n" /* file */
@@ -21,6 +23,30 @@ void _start() {
 	       );
 }
 
+
+static char hexDigit(int h) {
+  h = h & 0xf;
+  return ((h >= 10)?('a'-10):'0') + h;
+}
+
+// writes a byte as two hex values
+static void writeHexByte(int f, char c) {
+  char s[2];
+  int i = (unsigned int)c;
+  s[0] = hexDigit(i >> 4);
+  s[1] = hexDigit(i & 0xf);    
+  write(f, s, 2);
+}
+
 int main() {
-  write(1, "hello world ARM!\n", 17);
+  char* ip = entryPoint;
+  write(1, "hello femu ARM! x86 code:\n", 27);
+  
+  // print first 20 bytes of program
+  int i = 0;
+  for (i = 0; i < 20; i++) {
+    writeHexByte(1, ip[i]);
+    write(1, " ", 1);
+  }
+  write(1, "\n", 1);
 }
