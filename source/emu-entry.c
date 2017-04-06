@@ -1,4 +1,6 @@
 char* entryPoint = (char*)0xbe61be61;
+extern int emuStart(void* pc);
+
 
 int main();
 
@@ -50,4 +52,9 @@ int main() {
     write(1, " ", 1);
   }
   write(1, "\n", 1);
+
+  // actually execute
+  femuStart(entryPoint);
+  
+  write(1, "finished execution\n", 19);
 }
