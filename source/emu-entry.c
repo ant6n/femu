@@ -1,5 +1,6 @@
 char* entryPoint = (char*)0xbe61be61;
 
+int main();
 
 void write(int file, const char* s, int numChars) {
   asm volatile("mov r0, %[file]\n" /* file */
