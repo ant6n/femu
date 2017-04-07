@@ -1,34 +1,28 @@
+import genhandlers
 #
 #
 # this will generate the emulator .s file
 outputFile = "gen/opcode-handlers.s"
-handlerAlign = 5
 
-def generateHandlers():
-    handlers = [None]*(1<<16)
-    return handlers
-
-def generateInvalidOpcodeHandler(i):
-    return "   # missing opcode handler %04x" % i
 
 def generateSource():
-    handlers = generateHandlers()
+    handlers = genhandlers.generateHandlers()
     assert len(handlers) == (1<<16)
-
+    
+    opcodes = [(((i & 0xff) << 8) | ((i & 0xff00) >> 8)) for i in range(len(handlers))] # shuffle
+    
     handlersCode = "\n".join(
 """
-
-handler_{i:04x}:
     .align {handlerAlign}
-{code}
-""".format(i=i, handlerAlign=handlerAlign,
-           code=h if h is not None else generateInvalidOpcodeHandler(i))
-        for i, h in enumerate(handlers))
+{code}""".format(opcode=opcode, handlerAlign=genhandlers.handlerShift,
+           code=handlers[opcode])
+        for i,opcode in enumerate(opcodes))
     
     code = r"""
     .syntax unified
     .thumb
     .global femuHandlers
+    .global fb      @ breakpoint
     .align  15
 
 %(handlersCode)s
@@ -49,20 +43,18 @@ femuStart:
 	  svc  0
     
     pop {r0}
-    
-    mov  r12, r0     @ set up pc
-    ldr  r11, [r12]  @ current word
-    
-    pop  {r4-r11}
-    pop  {pc}
 
-
+%(initCode)s
+    
+    pop {r4-r11}
+    pop {pc}
+    
     .section .rodata
 msg:
     .ascii "inside emulator!\n"
     
 
-""" % dict(handlersCode=handlersCode)
+""" % dict(handlersCode=handlersCode, initCode=genhandlers.generateInit())
 
     print "write", len(code), "chars to", outputFile
     with open(outputFile, "w") as f:

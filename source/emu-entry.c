@@ -1,5 +1,5 @@
 char* entryPoint = (char*)0xbe61be61;
-extern int emuStart(void* pc);
+extern int femuStart(void* pc);
 
 
 int main();
@@ -44,6 +44,14 @@ static void writeHexByte(int f, char c) {
 int main() {
   char* ip = entryPoint;
   write(1, "hello femu ARM! x86 code:\n", 27);
+
+  // print starting point
+  write(1, "entry point: 0x", 15);
+  writeHexByte(1, (char)((int)ip >> 24));
+  writeHexByte(1, (char)((int)ip >> 16));
+  writeHexByte(1, (char)((int)ip >> 8));
+  writeHexByte(1, (char)((int)ip));
+  write(1, "\n", 1);
   
   // print first 20 bytes of program
   int i = 0;
