@@ -23,7 +23,7 @@ bin/main.o: source/main.cpp $(MAIN-INCLUDE)
 bin/emu-entry.o: source/emu-entry.c $(FEMU-INCLUDE)
 	$(CC-FEMU) $(FEMU-FLAGS) source/emu-entry.c -o bin/emu-entry.o
 
-gen/opcode-handlers.s: source/genemu.py source/genhandlers.py
+gen/opcode-handlers.s gen/register-gdb-print: source/genemu.py
 	python source/genemu.py
 
 bin/opcode-handlers.o: gen/opcode-handlers.s
