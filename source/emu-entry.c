@@ -54,6 +54,7 @@ int main() {
   write(1, "\n", 1);
   
   // print first 20 bytes of program
+  write(1, "first bytes: ", 14);
   int i = 0;
   for (i = 0; i < 20; i++) {
     writeHexByte(1, ip[i]);

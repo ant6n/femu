@@ -180,11 +180,10 @@ namespace  elf {
             std::cerr << "failed to open for write: " << path << std::endl;
             return false;
         }
-
-		printf("write: %d\n", size());
+		
+		printf("elf-write %d bytes\n", size());
 		file.write(data(), size());
-        printf("wrote\n");
-        
+		
         if (file.fail()) {
             std::cerr << "failed to write elf to: " << path << std::endl;
             file.close();

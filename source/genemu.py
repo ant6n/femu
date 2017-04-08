@@ -14,7 +14,7 @@ class Opcode(object):
         self.opcode = opcode
         self.po = opcode >> 8
         self.so = opcode & 0xff
-        self.r  = self.po & 0b111
+        self.r  = self.po & 0b111 # assumes that lower 3 bits of the primary opcode are a register
         
     @staticmethod
     def fromBytes(po, so):
@@ -78,21 +78,21 @@ handlers = [None]*(1<<16) # opcode -> handler code
 handlerShift = 5 # number of bits per handler
 
 registerAliases = collections.OrderedDict([
-    ('eax', 'r0'),
+    ('eax', 'r7'), # mapping matches x86 and arm syscall registers
+    ('ebx', 'r0'),
     ('ecx', 'r1'),
     ('edx', 'r2'),
-    ('ebx', 'r3'),
-    ('esp', 'r13'),
+    ('esi', 'r3'),
+    ('edi', 'r4'),
     ('ebp', 'r5'),
-    ('esi', 'r6'),
-    ('edi', 'r7'),
+    ('esp', 'r13'),
     
     ('scratch',    'r8'),  # scratch register
     ('result',     'r9'),  # last result as flag helper
     ('aux',        'r10'), # auxiliary flag helper
     ('handlerBase','r11'), # set all handler bits to 1 to override
     
-    ('eip',        'r4'),  # holds address of current instruction
+    ('eip',        'r6'),  # holds address of current instruction
     ('word',       'r12'), # opcode word
     ('nextHandler','r14'),
 ])
@@ -104,9 +104,12 @@ eregs = [eax, ecx, edx, ebx, esp, ebp, esi, edi] # index -> ereg
 
 nextHandler1_0Byte = format("ubfx nextHandler, word, 0, 16") # extract lower bytes
 nextHandler1_1Byte = format("ubfx nextHandler, word, 8, 16") # extract middle bytes
+nextHandler1_2Byte = format("ubfx nextHandler, word, 16,16") # extract upper bytes
 nextHandler2       = format("orr  nextHandler, handlerBase, nextHandler, lsl {handlerShift}") 
 
 nextWord_1Byte     = format("ldr  word, [eip, 1]!")
+nextWord_2Byte     = format("ldr  word, [eip, 2]!")
+nextWord_5Byte     = format("ldr  word, [eip, 5]!")
 branchNext         = format("bx   nextHandler")
 
 
@@ -133,7 +136,6 @@ for op in byteOpcodesWithRegister(0x58): # pop reg
     {branchNext}
     """, reg=eregs[op.r])
 
-
 for op in byteOpcodes(0x90): # nop
     op.define("""@ nop
     {nextHandler1_1Byte}
@@ -143,12 +145,26 @@ for op in byteOpcodes(0x90): # nop
     """)
 
 for op in byteOpcodes(0x68): # push imm32
-    pass
+    op.define("""@ push imm32
+    {nextWord_5Byte}
+    ldr  scratch, [eip, -4]
+    {nextHandler1_0Byte}
+    {nextHandler2}
+    push {{ scratch }}
+    {branchNext}
+    """, reg=eregs[op.r])
 
+Opcode(0xcd80).define( # int 0x80
+"""
+    {nextHandler1_2Byte}
+    svc  0  @ the registers are already in the right place, no mapping necessary
+    {nextHandler2}
+    {nextWord_2Byte}
+    {branchNext}
+""")
 
-
-
-
+    
+    
 ####### GENERATOR FUNCTIONS #############################################
 # one string of all the handlers
 def generateOpcodeHandlers():
@@ -187,7 +203,7 @@ def generateHeader():
 def generateFemuFunction():
     rodata(r"""
 msg:
-    .ascii "inside emulator!\n"
+    .ascii "starting emulation...\n"
 """)
     data(r"""
 stack_pointer:
@@ -206,7 +222,7 @@ femuStart:
     push {{r0}}
     mov  r0, 1       @ stdout
     ldr  r1, =msg    @ write buffer
-    mov  r2, 17      @ size
+    mov  r2, 22      @ size
     mov  r7, 4       @ write syscall
     svc  0
     pop {{r0}}
