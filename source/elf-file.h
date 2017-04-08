@@ -1,9 +1,6 @@
 //
 //  elf-file.h
-//  modify-elf
-//
-//  Created by Anton Dubrau on 2017-03-04.
-//  Copyright © 2017 Ant6n. All rights reserved.
+//  load, view and modify elf files
 //
 
 #ifndef __modify_elf__elf_file__
@@ -28,8 +25,7 @@ namespace elf {
         bool writeToFile(const std::string& path);
 	
         void addSegment();
-        
-        /** allows modifying the header - this will only be valid until the next modication operation */
+		
         Elf32_Ehdr& header();
         const Elf32_Ehdr& header() const;
         
