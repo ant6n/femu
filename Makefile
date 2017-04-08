@@ -5,8 +5,8 @@ CC-MAIN := g++-4.7
 FEMU-INCLUDE := source/*.h
 MAIN-INCLUDE := source/*.h
 
-FEMU-FLAGS := -g -c -static -nostdlib -std=gnu99 -fPIC -Os
-MAIN-FLAGS := -g -c -std=c++11 -O0
+FEMU-FLAGS := -ggdb -c -static -nostdlib -std=gnu99 -fPIC -Os
+MAIN-FLAGS := -ggdb -c -std=c++11 -O0
 
 FEMU-SRCS := emu-entry.c
 MAIN-SRCS := main.cpp elf-file.cpp

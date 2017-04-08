@@ -33,7 +33,7 @@ static char hexDigit(int h) {
 }
 
 // writes a byte as two hex values
-static void writeHexByte(int f, char c) {
+void writeHexByte(int f, char c) {
   char s[2];
   int i = (unsigned int)c;
   s[0] = hexDigit(i >> 4);

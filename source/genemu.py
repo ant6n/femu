@@ -44,12 +44,18 @@ def byteOpcodes(byte):
 # append rodata
 def rodata(code, **kwargs):
     _rodata.append(format(code, **kwargs))
-_rodata = [] # defines extra rodata
+_rodata = []
+
+# append data
+def data(code, **kwargs):
+    _data.append(format(code, **kwargs))
+_data = []
+
 
 # append text
 def text(code, **kwargs):
     _text.append(format(code, **kwargs))
-_text = [] # defines extra text
+_text = []
 
 
 # returns a label with the given optional suffix
@@ -86,7 +92,7 @@ registerAliases = collections.OrderedDict([
     ('aux',        'r10'), # auxiliary flag helper
     ('handlerBase','r11'), # set all handler bits to 1 to override
     
-    ('eip',        'r4'),
+    ('eip',        'r4'),  # holds address of current instruction
     ('word',       'r12'), # opcode word
     ('nextHandler','r14'),
 ])
@@ -96,11 +102,11 @@ eregs = [eax, ecx, edx, ebx, esp, ebp, esi, edi] # index -> ereg
 
 
 
-
+nextHandler1_0Byte = format("ubfx nextHandler, word, 0, 16") # extract lower bytes
 nextHandler1_1Byte = format("ubfx nextHandler, word, 8, 16") # extract middle bytes
 nextHandler2       = format("orr  nextHandler, handlerBase, nextHandler, lsl {handlerShift}") 
 
-nextWord_1Byte     = format("ldr  word, [eip], 1")
+nextWord_1Byte     = format("ldr  word, [eip, 1]!")
 branchNext         = format("bx   nextHandler")
 
 
@@ -114,6 +120,7 @@ branchNext         = format("bx   nextHandler")
 
 for opcode in range(2**16):
     Opcode(opcode).define("""@ missing opcode handler 0x{opcode:04x}
+    b notImplementedFunction
     """, opcode=opcode)
 
 for op in byteOpcodesWithRegister(0x58): # pop reg
@@ -135,8 +142,8 @@ for op in byteOpcodes(0x90): # nop
     {branchNext}
     """)
 
-    
-
+for op in byteOpcodes(0x68): # push imm32
+    pass
 
 
 
@@ -166,6 +173,7 @@ def generateHeader():
     return """
     .syntax unified
     .thumb
+    .extern writeHexByte
 
 {aliases}
 
@@ -177,6 +185,15 @@ def generateHeader():
 
 
 def generateFemuFunction():
+    rodata(r"""
+msg:
+    .ascii "inside emulator!\n"
+""")
+    data(r"""
+stack_pointer:
+    .word 0
+    """)
+    
     return format(r"""
     .global femuStart
     .thumb_func
@@ -193,23 +210,24 @@ femuStart:
     mov  r7, 4       @ write syscall
     svc  0
     pop {{r0}}
-
-fb:    
+    
+    ldr  r2, =stack_pointer
+    str  sp, [r2]
+    
     @ set emulator helper registers
     mov  scratch, 0
     mov  result, 0
     mov  aux, 0
     ldr  handlerBase, =handler_0000
     
-    @ set eip, word, nextHandler -- for a NOP
+    @ set eip, word, nextHandler
     mov  eip, r0
-    ldr  word, [eip]       @ set current word - next 3 bytes and NOP at lowest byte
-    lsl  word, word, 8
-    add  word, word, 0x90
-    ldr  nextHandler, =handler_9000
+    ldr  word, [eip]
+    {nextHandler1_0Byte}
+    {nextHandler2}
     
     @ set up emulated registers
-    @esp stays the same
+    @esp stays the same for now
     mov  eax, 0
     mov  ecx, 0
     mov  edx, 0
@@ -217,18 +235,50 @@ fb:
     mov  ebp, 0
     mov  esi, 0
     mov  edi, 0
-    
+fb:    
     @ start emulation
-    bx   nextHandler
+    {branchNext}
     
     
+femuEnd:
+    ldr sp, =stack_pointer
+    ldr sp, [sp]
     pop {{r4-r11}}
     pop {{pc}}
-    
-    .section .rodata
-msg:
-    .ascii "inside emulator!\n"
     """)
+
+def generateNotImplementedFunction():
+    rodata(r"""
+unimplemented_msg:
+    .ascii "Unimplemented opcode: "
+newline:
+    .ascii "\n"
+""")
+    return format("""
+    .thumb_func
+notImplementedFunction:
+    mov  r0, 1       @ stdout
+    ldr  r1, =unimplemented_msg
+    mov  r2, 22      @ size
+    mov  r7, 4       @ write syscall
+    svc  0
+
+    mov  r0, 1
+    and  r1, word, 0xff
+    bl   writeHexByte    
+    
+    mov  r0, 1
+    ubfx r1, word, 8, 8
+    bl   writeHexByte
+    
+    mov  r0, 1       @ stdout
+    ldr  r1, =newline
+    mov  r2, 1       @ size
+    mov  r7, 4       @ write syscall
+    svc  0
+    
+    b    femuEnd
+""")
 
 
 def generateSource(outputFile):    
@@ -236,8 +286,11 @@ def generateSource(outputFile):
 {header}
 {opcodeHandlers}
 {femuFunction}
+{notImplementedFunction}
 
 {text}
+    .section .data
+{data}
 
     .section .rodata
 {rodata}
@@ -245,7 +298,9 @@ def generateSource(outputFile):
 """.format(header = generateHeader(),
            opcodeHandlers = generateOpcodeHandlers(),
            femuFunction = generateFemuFunction(),
+           notImplementedFunction = generateNotImplementedFunction(),
            text = "\n".join(_text),
+           data = "\n".join(_data),
            rodata = "\n".join(_rodata))
 
     print "write", code.count("\n"), "lines to", outputFile
@@ -271,6 +326,11 @@ echo __ define print reg function ____\n
 
 define reg
     {printStatements}
+end
+
+define sr
+    si
+    reg
 end
 """.format(printStatements=printStatements)
     print "write", code.count("\n"), "lines to", outputFile
