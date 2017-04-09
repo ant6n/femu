@@ -138,10 +138,11 @@ registerAliases = collections.OrderedDict([
     ('scratch',    'r8'),  # scratch register
     ('result',     'r9'),  # last result as flag helper
     ('aux',        'r10'), # auxiliary flag helper
-    ('handlerBase','r11'), # set all handler bits to 1 to override
     
     ('eip',        'r6'),  # holds address of current instruction
     ('word',       'r12'), # opcode word
+
+    ('handlerBase','r11'), # set all handler bits to 1 to override
     ('nextHandler','r14'),
 ])
 
@@ -375,16 +376,35 @@ def generateSource(outputFile):
 
 
 def generateGDBRegisterPrint(outputFile):
+    def replace(name):
+        return (
+            name
+            .replace("handlerBase", "hBas")
+            .replace("nextHandler", "nxtH")
+            .replace("scratch", "scrat")
+            .replace("result", "reslt")
+        )
     
-    printStatements = "\n".join(r"""
-    printf "  "
-    echo \033[32m
-    printf " {name:>11} - {reg:<3}:"
-    echo \033[0m
-    printf "   0x%08X (%d) \n", ${reg}, ${reg}""".
-        format(name=name, reg=reg)
-        for name, reg in registerAliases.items())
-    
+    items = [(replace(name), reg) for name, reg in registerAliases.items()]
+    names = ["%s-%s" % (name, reg) for name, reg in items]
+    lengths = [max(8, len(name)) for name in names]
+    prints = []
+    prints.append('printf "' + '|'.join(name.rjust(lengths[i])
+                                        for i,name in enumerate(names)) + r'\n"' )
+    prints.append('printf "' + '|'.join("%08X".rjust(length + 6 - 10)
+                                        for length in lengths)
+                  + r'\n", ' + ', '.join('$' + reg for _, reg in items) + '\n')
+    for i, (name, reg) in enumerate(items):
+        length = lengths[i]
+        if i != 0:
+            prints.append("echo |")
+        prints.append("""if ${reg} >= 100000000
+        printf "{hash}"
+    else
+        printf "{space}%8d", ${reg}
+    end""".format(reg=reg, hash=length*'#', space=' '*(length-8)))
+    prints.append(r'echo \n%s\n' % ('-'*(sum(lengths) + 1*(len(lengths)-1))))
+
     code = r"""
 echo __ define print reg function ____\n
 
@@ -396,7 +416,8 @@ define sr
     si
     reg
 end
-""".format(printStatements=printStatements)
+""".format(printStatements="\n    ".join(prints))
+    print code
     print "write", code.count("\n"), "lines to", outputFile
     with open(outputFile, "w") as f:
         f.write(code)
