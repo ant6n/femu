@@ -3,9 +3,12 @@ import collections
 
 
 ####### HELPERS/OPCODE HELPERS ##########################################
+# inserts macros or format values from the override
+# align comments
 def format(string, **override):
-    formatDict = dict(globals(), **override)
-    return string.format(**formatDict)
+    formatDict = dict(_macros, **_aliases)
+    formatDict.update(override)
+    return alignComments(string.format(**formatDict))
 
 # represents a 16-bit opcode
 class Opcode(object):
@@ -23,11 +26,13 @@ class Opcode(object):
 
     # defines the asm code for this opcode
     def define(self, code, **kwargs):
-        handlers[self.opcode] = (
+        code = (
 """    .thumb_func
 handler_{opcode:04x}: """.format(opcode=self.opcode)
-            + format(code.strip("\n"), **kwargs)
+            + format(code.strip("\n"), **kwargs).lstrip(' ')
         )
+        handlers[self.opcode] = code
+
             
 # yields all opcodes that start with (byte+r), r in [0, 7]
 def byteOpcodesWithRegister(byte):
@@ -68,14 +73,57 @@ def label(suffix=""):
 _currentLabel = 0
 
 
+# adds a macro with the given name to the list of macros
+# will format the given code
+# macros need to be multiple lines
+# commensts the name of the macro on the first line
+def macro(name, code):
+    code = format(code)
+    assert code.count("\n") == 0 # TODO
+    code += " - " if '@' in code else " @ "
+    code += name
+    assert name not in _macros
+    _macros[name] = code
+_macros = dict()
 
 
+# adds an expression macro (usually nam -> value)
+# aliases will also be added to the global name space
+def alias(name, exp):
+    globals()[name] = exp
+    _aliases[name] = exp
+_aliases = dict()
 
+# given some asm code, will align the @ on the same level
+def alignComments(code):
+    def hasCode(line):
+        return (len (line.split('@', 1)[0].strip()) > 0
+                if "@" in line else
+                len(line.strip()) > 0)
+    def hasComment(line):
+        return "@" in line
+    
+    lines = code.split("\n")
+    try:
+        width = max(len(line.split("@",1)[0].rstrip()) + 1
+                    for line in lines if hasCode(line) and hasComment(line))
+    except ValueError:
+        return code
+    return "\n".join(
+        (line)
+        if not hasComment(line) else
+        ("    @ " + line.split('@', 1)[1].lstrip())
+        if not hasCode(line) else
+        (line.split("@", 1)[0].ljust(width) + "@" + line.split('@', 1)[1])
+        for line in lines
+    )
+    
 
 
 ####### DEFINITIONS #####################################################
 handlers = [None]*(1<<16) # opcode -> handler code
-handlerShift = 5 # number of bits per handler
+alias('handlerShift', 5) # number of bits per handler
+
 
 registerAliases = collections.OrderedDict([
     ('eax', 'r7'), # mapping matches x86 and arm syscall registers
@@ -102,15 +150,15 @@ eregs = [eax, ecx, edx, ebx, esp, ebp, esi, edi] # index -> ereg
 
 
 
-nextHandler1_0Byte = format("ubfx nextHandler, word, 0, 16") # extract lower bytes
-nextHandler1_1Byte = format("ubfx nextHandler, word, 8, 16") # extract middle bytes
-nextHandler1_2Byte = format("ubfx nextHandler, word, 16,16") # extract upper bytes
-nextHandler2       = format("orr  nextHandler, handlerBase, nextHandler, lsl {handlerShift}") 
+macro('nextHandler1_0Byte', "ubfx nextHandler, word, 0, 16") # extract lower bytes
+macro('nextHandler1_1Byte', "ubfx nextHandler, word, 8, 16") # extract middle bytes
+macro('nextHandler1_2Byte', "ubfx nextHandler, word, 16,16") # extract upper bytes
+macro('nextHandler2',       "orr  nextHandler, handlerBase, nextHandler, lsl {handlerShift}") 
 
-nextWord_1Byte     = format("ldr  word, [eip, 1]!")
-nextWord_2Byte     = format("ldr  word, [eip, 2]!")
-nextWord_5Byte     = format("ldr  word, [eip, 5]!")
-branchNext         = format("bx   nextHandler")
+macro('nextWord_1Byte', "ldr  word, [eip, 1]!")
+macro('nextWord_2Byte', "ldr  word, [eip, 2]!")
+macro('nextWord_5Byte', "ldr  word, [eip, 5]!")
+macro('branchNext',     "bx   nextHandler")
 
 
 
