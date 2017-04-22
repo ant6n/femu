@@ -1,3 +1,4 @@
 #!/bin/bash
 echo debug $1
 gdb -x gen/register-gdb-print -tui -ex "set breakpoint pending on" -ex 'b fb' -ex 'run' --args ./femu $1
+
