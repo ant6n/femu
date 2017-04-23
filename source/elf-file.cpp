@@ -168,22 +168,22 @@ namespace  elf {
     bool ElfFile::writeToFile(const std::string& path) {
         using std::ofstream;
 
-		// make file writeable if it exists
-		if (chmod(path.c_str(), S_IWUSR) != 0) {
+        // make file writeable if it exists
+        if (std::ifstream{path}.good() and chmod(path.c_str(), S_IWUSR) != 0) {
             std::cerr << "failed to make existing file writeable " << path << std::endl;
             return false;
         }
 
-		
+        
         std::ofstream file(path, ofstream::out | ofstream::binary | ofstream::trunc);
         if (not file.is_open()) {
             std::cerr << "failed to open for write: " << path << std::endl;
             return false;
         }
-		
-		printf("elf-write %d bytes\n", size());
-		file.write(data(), size());
-		
+        
+        printf("elf-write %d bytes\n", size());
+        file.write(data(), size());
+        
         if (file.fail()) {
             std::cerr << "failed to write elf to: " << path << std::endl;
             file.close();

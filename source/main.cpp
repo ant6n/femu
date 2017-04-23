@@ -57,20 +57,20 @@ elf::ElfFile injectElf(const elf::ElfFile& targetElf, const elf::ElfFile& inject
     int injectElfAlignment = 1;
     for (int i = 0; i < injectElf.numSegments(); i++) {
         auto segment = injectElf.getSegment(i);
-		// TODO - check if there's an overlap with segments in the given elf
-		if (segment.header().p_type == PT_LOAD and
-			segment.header().p_filesz > 0) {
-			// TODO check power of two
-			injectElfAlignment = std::max(injectElfAlignment,
-										  static_cast<int>(segment.header().p_align));
-		}
+        // TODO - check if there's an overlap with segments in the given elf
+        if (segment.header().p_type == PT_LOAD and
+            segment.header().p_filesz > 0) {
+            // TODO check power of two
+            injectElfAlignment = std::max(injectElfAlignment,
+                                          static_cast<int>(segment.header().p_align));
+        }
     }
 
     // collect offsets and sizes
     size_t injectElfOffset = align(targetElf.size(), injectElfAlignment);
     size_t newProgramHeaderOffset = align(injectElfOffset + injectElf.size(), alignof(Elf32_Phdr));
     size_t newProgramHeaderSize = targetElf.header().e_phentsize*(targetElf.numSegments() +
-																 injectElf.numSegments());
+                                                                 injectElf.numSegments());
     size_t newSize = newProgramHeaderOffset + newProgramHeaderSize;
     
     // create new data
@@ -92,25 +92,25 @@ elf::ElfFile injectElf(const elf::ElfFile& targetElf, const elf::ElfFile& inject
         printf("add segment %d, offset: %d, \n", i, headerOffset);
         // copy program header entry
         auto segment = injectElf.getSegment(i);
-		memcpy(newData + headerOffset, &segment.header(), copyPHEntrySize);
-	
+        memcpy(newData + headerOffset, &segment.header(), copyPHEntrySize);
+    
         // fix program header entry
-		Elf32_Phdr* headerEntry = reinterpret_cast<Elf32_Phdr*>(newData + headerOffset);
-		headerEntry->p_offset += injectElfOffset;
-		if (headerEntry->p_type != PT_LOAD) {
-			headerEntry->p_type = PT_NULL;
-		}
-	
-		headerOffset += targetElf.header().e_phentsize;
+        Elf32_Phdr* headerEntry = reinterpret_cast<Elf32_Phdr*>(newData + headerOffset);
+        headerEntry->p_offset += injectElfOffset;
+        if (headerEntry->p_type != PT_LOAD) {
+            headerEntry->p_type = PT_NULL;
+        }
+    
+        headerOffset += targetElf.header().e_phentsize;
     }
         
     // create new elf and update/fix header
     std::shared_ptr<char> shared(newData);
     elf::ElfFile outElf(shared, newSize);
-	
+    
     outElf.header().e_phoff = newProgramHeaderOffset;
     outElf.header().e_phnum = targetElf.numSegments() + injectElf.numSegments();
-	
+    
     printf("output:\n");
     outElf.printHeader();
     outElf.printProgramHeaders();
@@ -124,23 +124,23 @@ bool injectEmuData(elf::ElfFile& emuElf, const elf::ElfFile& targetElf) {
     uintptr_t MAGIC = 0xbe61be61;
     for (int i = 0; i < emuElf.numSegments(); i++) {
         auto segment = emuElf.getSegment(i);
-		if (segment.header().p_type == PT_LOAD and
-			segment.header().p_flags == (PF_R | PF_W)) {
-			printf("searching for entry point in segment %d\n", i);
-			uintptr_t* pointer = (uintptr_t*)(emuElf.data() + segment.header().p_offset);
-			i = 0;
-			while (*pointer != MAGIC) {
-				if (i > segment.header().p_filesz) {
-					std::cerr << "entrypoint MAGIC not found in emu!" << std::endl;
-					return false;
-				}
-				pointer++;
-				i += sizeof(uintptr_t);
-			}
-			printf("magic entrypoint found at offset: %d\n", i * sizeof(uintptr_t));
-			*pointer = targetElf.header().e_entry;
-			return true;
-		}
+        if (segment.header().p_type == PT_LOAD and
+            segment.header().p_flags == (PF_R | PF_W)) {
+            printf("searching for entry point in segment %d\n", i);
+            uintptr_t* pointer = (uintptr_t*)(emuElf.data() + segment.header().p_offset);
+            i = 0;
+            while (*pointer != MAGIC) {
+                if (i > segment.header().p_filesz) {
+                    std::cerr << "entrypoint MAGIC not found in emu!" << std::endl;
+                    return false;
+                }
+                pointer++;
+                i += sizeof(uintptr_t);
+            }
+            printf("magic entrypoint found at offset: %d\n", i * sizeof(uintptr_t));
+            *pointer = targetElf.header().e_entry;
+            return true;
+        }
     }
     return false;
 }
@@ -149,16 +149,16 @@ bool injectEmuData(elf::ElfFile& emuElf, const elf::ElfFile& targetElf) {
 int main(int argc, char *const argv[], char *const envp[]) {
     std::string path = argv[1];
     if (not createEmulator(path, combinedElfPath)) {
-		std::cerr << "failed to inject emulator into program" << std::endl;
-		exit(EXIT_FAILURE);
+        std::cerr << "failed to inject emulator into program" << std::endl;
+        exit(EXIT_FAILURE);
     }
-	
-	std::cout << "running combined elf:" << std::endl;
-	
-	if (execve(combinedElfPath.c_str(), argv, envp) == -1) {
-		std::cerr << "failed to start combined emulator elf " << combinedElfPath << std::endl;
-	}
-	
+    
+    std::cout << "running combined elf:" << std::endl;
+    
+    if (execve(combinedElfPath.c_str(), argv, envp) == -1) {
+        std::cerr << "failed to start combined emulator elf " << combinedElfPath << std::endl;
+    }
+    
     return 0;
 }
 
