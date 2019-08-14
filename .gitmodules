@@ -1,0 +1,3 @@
+[submodule "tests/x86-unit-tests"]
+	path = tests/x86-unit-tests
+	url = https://github.com/ant6n/x86-unit-tests.git
