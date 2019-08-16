@@ -16,44 +16,51 @@
 #include <unistd.h>
 #include "main.h"
 #include "elf-file.h"
-
+#include "emu-shared.h"
 
 const std::string emulatorElfPath = "femu-inject";
-const std::string combinedElfPath = "modified-elf";
+//const std::string combinedElfPath = "modified-elf";
 
 elf::ElfFile injectElf(const elf::ElfFile& targetElf, const elf::ElfFile& injectElf);
-bool injectEmuData(elf::ElfFile& emuElf, const elf::ElfFile& targetElf);
+bool injectEmuOptions(elf::ElfFile& emuElf, const EmuOptions& options);
 
 
 /** returns the smallest number n >= offset s.t. n % alignment == 0 */
 static size_t align(int offset, int alignment) {
-    printf("alignoffet: %d, %d\n", offset, alignment);
+    //printf("alignoffet: %d, %d\n", offset, alignment);
     auto result = ((offset + (alignment - 1)) / alignment) * alignment;
-    printf("result: %d\n", result);
+    //printf("result: %d\n", result);
     return result;
 }
 
 /** create emulator for the spcified elf defined by the target path, by injecting it into the emu */
-static bool createEmulator(const std::string& targetPath, const std::string& outputPath) {
-    elf::ElfFile targetElf(targetPath);
+static elf::ElfFile createEmulatedElf(const std::string& x86ElfPath,
+                                      const EmuOptions& options) { //, const std::string& outputPath) {
+    elf::ElfFile x86Elf(x86ElfPath);
     elf::ElfFile emuElf(emulatorElfPath);
     
+    /*
     printf("target elf:\n");
     targetElf.printProgramHeaders();
     printf("emu elf:\n");
     emuElf.printProgramHeaders();
-
-    if (not injectEmuData(emuElf, targetElf)) return false;
+    */
+    auto optionsCopy = options;
+    optionsCopy.entryPoint = x86Elf.header().e_entry;
     
-    elf::ElfFile outputElf = injectElf(emuElf, targetElf);
-    std::cout << "write file: " << outputPath << std::endl;
-    return outputElf.writeToFile(outputPath);
+    if (not injectEmuOptions(emuElf, optionsCopy)) {
+		std::cerr << "failed to inject emulator into program" << std::endl;
+		exit(EXIT_FAILURE);
+    }
+        
+    elf::ElfFile outputElf = injectElf(emuElf, x86ElfPath);
+    return outputElf;
 }
 
 /** append the given injectElf into the targetElf and return new elf */
 elf::ElfFile injectElf(const elf::ElfFile& targetElf, const elf::ElfFile& injectElf) {
     
-    // get alignment of inect elf
+    // get alignment of inejct elf
     int injectElfAlignment = 1;
     for (int i = 0; i < injectElf.numSegments(); i++) {
         auto segment = injectElf.getSegment(i);
@@ -74,7 +81,7 @@ elf::ElfFile injectElf(const elf::ElfFile& targetElf, const elf::ElfFile& inject
     size_t newSize = newProgramHeaderOffset + newProgramHeaderSize;
     
     // create new data
-    printf("new alloc: %d\n", newSize);
+    //printf("new alloc: %d\n", newSize);
     char* newData = new char [newSize];
 
     // copy elfs
@@ -89,7 +96,7 @@ elf::ElfFile injectElf(const elf::ElfFile& targetElf, const elf::ElfFile& inject
     size_t copyPHEntrySize = std::min(targetElf.header().e_phentsize, injectElf.header().e_phentsize);
     size_t headerOffset = newProgramHeaderOffset + inputPHSize;
     for (int i = 0; i < injectElf.numSegments(); i++) {
-        printf("add segment %d, offset: %d, \n", i, headerOffset);
+        //printf("add segment %d, offset: %d, \n", i, headerOffset);
         // copy program header entry
         auto segment = injectElf.getSegment(i);
 		memcpy(newData + headerOffset, &segment.header(), copyPHEntrySize);
@@ -111,34 +118,34 @@ elf::ElfFile injectElf(const elf::ElfFile& targetElf, const elf::ElfFile& inject
     outElf.header().e_phoff = newProgramHeaderOffset;
     outElf.header().e_phnum = targetElf.numSegments() + injectElf.numSegments();
 	
-    printf("output:\n");
-    outElf.printHeader();
-    outElf.printProgramHeaders();
+    //printf("output:\n");
+    //outElf.printHeader();
+    //outElf.printProgramHeaders();
     return outElf;
 }
 
 
 /** inject emulator data from target into the emulator elf */
-bool injectEmuData(elf::ElfFile& emuElf, const elf::ElfFile& targetElf) {
+bool injectEmuOptions(elf::ElfFile& emuElf, const EmuOptions& emuOptions) {
     // find R/W load segment with the magic number
-    uintptr_t MAGIC = 0xbe61be61;
+    uintptr_t MAGIC = EMU_OPTIONS_MAGIC;
     for (int i = 0; i < emuElf.numSegments(); i++) {
         auto segment = emuElf.getSegment(i);
 		if (segment.header().p_type == PT_LOAD and
 			segment.header().p_flags == (PF_R | PF_W)) {
-			printf("searching for entry point in segment %d\n", i);
-			uintptr_t* pointer = (uintptr_t*)(emuElf.data() + segment.header().p_offset);
-			i = 0;
-			while (*pointer != MAGIC) {
-				if (i > segment.header().p_filesz) {
+			//printf("searching for entry point in segment %d\n", i);
+            uintptr_t* pstart = (uintptr_t*)(emuElf.data() + segment.header().p_offset);
+			uintptr_t* pcurrent = pstart;
+			while (*pcurrent != MAGIC) {
+				if (pcurrent - pstart > segment.header().p_filesz) {
 					std::cerr << "entrypoint MAGIC not found in emu!" << std::endl;
 					return false;
 				}
-				pointer++;
-				i += sizeof(uintptr_t);
+				pcurrent++;
 			}
-			printf("magic entrypoint found at offset: %d\n", i * sizeof(uintptr_t));
-			*pointer = targetElf.header().e_entry;
+			printf("magic entrypoint found at offset: %d\n", pcurrent - pstart);
+            std::cout << sizeof(EmuOptions);
+            memcpy(pcurrent, &emuOptions, sizeof(EmuOptions));
 			return true;
 		}
     }
@@ -148,16 +155,19 @@ bool injectEmuData(elf::ElfFile& emuElf, const elf::ElfFile& targetElf) {
 
 int main(int argc, char *const argv[], char *const envp[]) {
     std::string path = argv[1];
-    if (not createEmulator(path, combinedElfPath)) {
-		std::cerr << "failed to inject emulator into program" << std::endl;
-		exit(EXIT_FAILURE);
-    }
-	
-	std::cout << "running combined elf:" << std::endl;
-	
-	if (execve(combinedElfPath.c_str(), argv, envp) == -1) {
-		std::cerr << "failed to start combined emulator elf " << combinedElfPath << std::endl;
-	}
+    
+    // parse options
+    EmuOptions options;
+    
+    elf::ElfFile emulatedElf = createEmulatedElf(path, options); //, combinedElfPath);
+    
+	std::cout << "running emulated elf:" << std::endl;
+    
+    emulatedElf.execute(&argv[1], envp);
+    
+	//if (execve(combinedElfPath.c_str(), argv, envp) == -1) {
+    //std::cerr << "failed to start combined emulator elf " << combinedElfPath << std::endl;
+	//}
 	
     return 0;
 }

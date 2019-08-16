@@ -3,8 +3,9 @@ import collections
 
 
 ####### HELPERS/OPCODE HELPERS ##########################################
-# inserts macros or format values from the override
+# into given string, inserts macros or format values from the override
 # align comments
+# returns new string
 def format(string, **override):
     formatDict = dict(_macros, **_aliases)
     formatDict.update(override)

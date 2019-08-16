@@ -23,7 +23,10 @@ namespace elf {
         
         /** write elf to file, returns true for success */
         bool writeToFile(const std::string& path);
-	
+        
+        /** executes elf in-memory */
+        bool execute(char *const argv[], char *const envp[]);
+        
         void addSegment();
 		
         Elf32_Ehdr& header();
@@ -31,16 +34,15 @@ namespace elf {
         
         char* data();
         const char* data() const;
-
-	size_t size() const;
-	
-	int numSegments() const;
+        
+        size_t size() const;
+        
+        int numSegments() const;
         Segment getSegment(int programHeaderIndex);
         const Segment getSegment(int programHeaderIndex) const;
         
         void printHeader() const;
         void printProgramHeaders() const;
-        
         
     private:
         ElfFile(std::pair<std::shared_ptr<char>, std::ifstream::pos_type> dataAndSize);

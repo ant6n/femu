@@ -7,7 +7,13 @@
 //
 
 #include "elf-file.h"
+#include <string>
+#include <vector>
+#include <sys/mman.h>
 #include <sys/stat.h>
+#include <fcntl.h> 
+#include <unistd.h>
+#include <errno.h>
 
 
 /** reads a file and returns its contents, returns the size per reference */
@@ -183,7 +189,8 @@ namespace  elf {
 		
 		printf("elf-write %d bytes\n", size());
 		file.write(data(), size());
-		
+        printf("done\n");
+        
         if (file.fail()) {
             std::cerr << "failed to write elf to: " << path << std::endl;
             file.close();
@@ -201,7 +208,49 @@ namespace  elf {
     }
     
     
-    
+    bool ElfFile::execute(char *const argv[], char *const envp[]) {
+        std::cout << "execute elf as " << argv[0] << std::endl;
+        
+        // create in-memory file - by writing it to /tmp/
+        //std::string filename = std::string("a.out") + '-' + std::to_string(getpid());
+        std::vector<char> filename = {'/','t','m','p','/','e','l','f','-','X','X','X','X','X','X', '\0'};
+        std::cout << "modified" << std::endl;
+        int fd = mkstemp(filename.data()); //, O_RDWR | O_CREAT); //memfd_create(argv[0], MFD_CLOEXEC);
+        std::cout << "after mkostemp" << std::endl;
+        if (fd < 0) {
+            std::cout << "failed creating file" << std::endl;
+            if (errno == EACCES) std::cout << "EACCESS" << std::endl;
+            if (errno == EEXIST) std::cout << "EEXIST" << std::endl;
+            if (errno == EINVAL) std::cout << "EINVAL" << std::endl;
+            if (errno == EMFILE) std::cout << "EMFILE" << std::endl;
+            if (errno == ENAMETOOLONG) std::cout << "ENAMETOOLONG" << std::endl;
+            if (errno == ENFILE) std::cout << "ENFILE" << std::endl;
+            if (errno == ENOENT) std::cout << "ENOENT" << std::endl;
+            return false;
+        }
+            
+        //std::string filename = std::string("/proc/self/fd/") + std::to_string(fd);
+        std::cout << "created in memory file: " << std::endl;
+        
+        // write elf to that file
+        write(fd, data(), size());        
+        std::cout << "wrote file" << std::endl;
+        
+        // make executable
+        fchmod(fd, S_IXUSR | S_IWUSR | S_IRUSR);
+
+        // close - otherwise there are issues with fexecve (?)
+        close(fd);
+
+        // open and unlink (delete after execution ends)
+        fd = open(filename.data(), O_RDONLY);
+        unlink(filename.data());
+        
+        std::cout << "execute" << std::endl;
+        fexecve(fd, argv, envp);
+        
+        return false; // exec only returns if there's an error
+    }
     
     
     Segment::Segment(ElfFile& elfFile, int programHeaderIndex)
