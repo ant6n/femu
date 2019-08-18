@@ -369,7 +369,7 @@ def generateSource(outputFile):
            data = "\n".join(_data),
            rodata = "\n".join(_rodata))
 
-    print "write", code.count("\n"), "lines to", outputFile
+    print("write", code.count("\n"), "lines to", outputFile)
     with open(outputFile, "w") as f:
         f.write(code)
 
@@ -418,8 +418,8 @@ define sr
     reg
 end
 """.format(printStatements="\n    ".join(prints))
-    print code
-    print "write", code.count("\n"), "lines to", outputFile
+    print(code)
+    print("write", code.count("\n"), "lines to", outputFile)
     with open(outputFile, "w") as f:
         f.write(code)
     

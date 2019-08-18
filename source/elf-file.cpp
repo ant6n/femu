@@ -237,16 +237,18 @@ namespace  elf {
         
         // make executable
         fchmod(fd, S_IXUSR | S_IWUSR | S_IRUSR);
-
-        // close - otherwise there are issues with fexecve (?)
+        
+        // close
         close(fd);
-
+        
         // open and unlink (delete after execution ends)
         fd = open(filename.data(), O_RDONLY);
         unlink(filename.data());
-        
+
+        // execute from file handle
         std::cout << "execute" << std::endl;
-        fexecve(fd, argv, envp);
+        std::string fdFilename = std::string("/proc/self/fd/") + std::to_string(fd);
+        execve(fdFilename.data(), argv, envp);
         
         return false; // exec only returns if there's an error
     }

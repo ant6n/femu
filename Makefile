@@ -1,6 +1,6 @@
 
-CC-FEMU := gcc-4.7
-CC-MAIN := g++-4.7
+CC-FEMU := gcc
+CC-MAIN := g++
 
 FEMU-INCLUDE := source/*.h
 MAIN-INCLUDE := source/*.h
@@ -24,7 +24,7 @@ bin/emu-entry.o: source/emu-entry.c $(FEMU-INCLUDE)
 	$(CC-FEMU) $(FEMU-FLAGS) source/emu-entry.c -o bin/emu-entry.o
 
 gen/opcode-handlers.s gen/register-gdb-print: source/genemu.py
-	python source/genemu.py
+	python3 source/genemu.py
 
 bin/opcode-handlers.o: gen/opcode-handlers.s
 	$(CC-FEMU) $(FEMU-FLAGS) gen/opcode-handlers.s -o bin/opcode-handlers.o
