@@ -17,6 +17,8 @@
 #include "main.h"
 #include "elf-file.h"
 #include "emu-shared.h"
+#include <getopt.h>
+
 
 const std::string emulatorElfPath = "femu-inject";
 //const std::string combinedElfPath = "modified-elf";
@@ -154,22 +156,86 @@ bool injectEmuOptions(elf::ElfFile& emuElf, const EmuOptions& emuOptions) {
 
 
 int main(int argc, char *const argv[], char *const envp[]) {
-    std::string path = argv[1];
-    
     // parse options
-    EmuOptions options;
+    EmuOptions emuOptions;
+    std::string emulatedOutputFilename = "";
+    const char* short_options = "vht:e:";
+    static struct option long_options[] = {
+        {"verbose", no_argument,       0, 'v'},
+        {"help",    no_argument,       0, 'h'},
+        {"test",    required_argument, 0, 't'},
+        {"emu-file",required_argument, 0, 'e'},
+        {0, 0, 0, 0}
+    };
+    while (1) {
+        int option_index = 0; // getopt_long stores the option index here.
+        int c = getopt_long (argc, argv, short_options, long_options, &option_index);
+        if (c == -1) break; // Detect the end of the options.
+        
+        switch (c) {
+        case 0:
+            printf("error - case 0 in getopt\n");
+            exit(1);
+
+        case 'h':
+            puts ("here's some help!!!\n");
+            break;
+        
+        case 'v':
+            emuOptions.verbose = 1;
+            break;
+
+        case 'e':
+            emulatedOutputFilename = optarg;
+            break;
+        
+        case 't': {
+            int numChars = strlen(optarg);
+            if (numChars + 1 >= EMU_OPTIONS_MAX_FILENAME_LENGTH) {
+                printf("test filename too long\n");
+                exit(1);
+            }
+            memcpy(emuOptions.testJsonOut, optarg, numChars + 1);
+            break;
+        }
+        case 'f':
+            printf ("option -f with value `%s'\n", optarg);
+            break;
+        
+        case '?':
+            /* getopt_long already printed an error message. */
+            break;
+        
+        default:
+            printf("default case in opt-parsing, unknown case (%d): abort", c);
+            abort ();
+        }
+    }
     
-    elf::ElfFile emulatedElf = createEmulatedElf(path, options); //, combinedElfPath);
+    auto new_argv = &(argv[optind]);
+    int new_argc = argc - optind;
+    if (new_argc <= 0) {
+        printf("no file supplied for emulation\n");
+        exit(1);
+    }    
+    std::string path = new_argv[0];
+    // done parsing options
+
+
+    // create new elf and run it
+    elf::ElfFile emulatedElf = createEmulatedElf(path, emuOptions);
+
+    // output elf if necessary
+    if (emulatedOutputFilename.length() > 0) {
+        std::cout << "write emulated elf to " << emulatedOutputFilename << std::endl;
+        emulatedElf.writeToFile(emulatedOutputFilename);
+    }
     
-	std::cout << "running emulated elf:" << std::endl;
+    std::cout << "running emulated elf:" << std::endl;
+    emulatedElf.execute(new_argv, envp);
     
-    emulatedElf.execute(&argv[1], envp);
-    
-	//if (execve(combinedElfPath.c_str(), argv, envp) == -1) {
-    //std::cerr << "failed to start combined emulator elf " << combinedElfPath << std::endl;
-	//}
-	
-    return 0;
+    printf("error on executing emulated elf");
+    exit(1);
 }
 
 

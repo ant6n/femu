@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #define EMU_OPTIONS_MAGIC 0xbe61be61
+#define EMU_OPTIONS_MAX_FILENAME_LENGTH 1024
 
 #ifdef __cplusplus
 extern "C" {
@@ -14,7 +15,8 @@ extern "C" {
     typedef struct {
         uint32_t MAGIC; // used to find the options struct inside the emu elf
         uintptr_t entryPoint;
-        char testJsonOut[1024]; // if this defines a string, use test mode and output state on int3
+        int8_t verbose;
+        char testJsonOut[EMU_OPTIONS_MAX_FILENAME_LENGTH]; // if defined, use test mode: output state on int3
     } EmuOptions;
 
 
