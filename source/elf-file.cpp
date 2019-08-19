@@ -179,6 +179,8 @@ namespace  elf {
             std::cerr << "failed to open for write: " << path << std::endl;
             return false;
         }
+
+        // TODO - if file exists, opening fails ... fix this
         
 		// make file writeable if it exists
 		if (chmod(path.c_str(), S_IWUSR) != 0) {

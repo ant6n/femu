@@ -241,11 +241,55 @@ def generateHeader():
     .thumb
     .extern writeHexByte
 
+
 {aliases}
 
     .global femuHandlers
     .global fb      @ breakpoint
+    
+    @ register state
+    .global stored_eip
+    .global stored_eax
+    .global stored_ebx
+    .global stored_ecx
+    .global stored_edx
+    .global stored_esi
+    .global stored_edi
+    .global stored_ebp
+    .global stored_esp
+    
     .align  15
+
+@ macros
+@ place (x86 registers, esp, eip) in store_(reg), switch to arm stack - uses scratch
+.macro store_state
+    @ store state
+    ldr scratch, =stored_eip; str eip, [scratch]
+    ldr scratch, =stored_eax; str eax, [scratch]
+    ldr scratch, =stored_ebx; str ebx, [scratch]
+    ldr scratch, =stored_ecx; str ecx, [scratch]
+    ldr scratch, =stored_edx; str edx, [scratch]
+    ldr scratch, =stored_esi; str esi, [scratch]
+    ldr scratch, =stored_edi; str edi, [scratch]
+    ldr scratch, =stored_ebp; str ebp, [scratch]
+    ldr scratch, =stored_esp; str esp, [scratch]
+    
+    @ restore stack and return
+    ldr sp, =stack_pointer; ldr sp, [sp]
+.endm
+
+@ load (x86 registers, esp, eip) from store_reg (implied: switch to x86 stack) - uses scratch
+.macro restore_state
+    ldr scratch, =stored_eip; ldr eip, [scratch]
+    ldr scratch, =stored_eax; ldr eax, [scratch]
+    ldr scratch, =stored_ebx; ldr ebx, [scratch]
+    ldr scratch, =stored_ecx; ldr ecx, [scratch]
+    ldr scratch, =stored_edx; ldr edx, [scratch]
+    ldr scratch, =stored_esi; ldr esi, [scratch]
+    ldr scratch, =stored_edi; ldr edi, [scratch]
+    ldr scratch, =stored_ebp; ldr ebp, [scratch]
+    ldr scratch, =stored_esp; ldr esp, [scratch]
+.endm
 
     """.format(aliases=aliases)
 
@@ -256,8 +300,19 @@ msg:
     .ascii "starting emulation...\n"
 """)
     data(r"""
-stack_pointer:
-    .word 0
+
+stack_pointer: .word 0
+
+@ register state
+stored_eip: .word 0
+stored_eax: .word 0
+stored_ebx: .word 0
+stored_ecx: .word 0
+stored_edx: .word 0
+stored_esi: .word 0
+stored_edi: .word 0
+stored_ebp: .word 0
+stored_esp: .word 0
     """)
     
     return format(r"""
@@ -270,15 +325,22 @@ femuStart:
    
     @ print message
     push {{r0}}
+    push {{r1}}
     mov  r0, 1       @ stdout
     ldr  r1, =msg    @ write buffer
     mov  r2, 22      @ size
     mov  r7, 4       @ write syscall
     svc  0
+    pop {{r1}}
     pop {{r0}}
-    
+
+    @ store arm stack pointer
     ldr  r2, =stack_pointer
     str  sp, [r2]
+    
+    @ set up eip, x86 stack pointer (esp)
+    mov  eip, r0
+    mov  esp, r1
     
     @ set emulator helper registers
     mov  scratch, 0
@@ -286,14 +348,12 @@ femuStart:
     mov  aux, 0
     ldr  handlerBase, =handler_0000
     
-    @ set eip, word, nextHandler
-    mov  eip, r0
+    @ set up word, nextHandler
     ldr  word, [eip]
     {nextHandler1_0Byte}
     {nextHandler2}
     
     @ set up emulated registers
-    @esp stays the same for now
     mov  eax, 0
     mov  ecx, 0
     mov  edx, 0
@@ -307,8 +367,9 @@ fb:
     
     
 femuEnd:
-    ldr sp, =stack_pointer
-    ldr sp, [sp]
+    
+    store_state
+
     pop {{r4-r11}}
     pop {{pc}}
     """)
@@ -323,12 +384,14 @@ newline:
     return format("""
     .thumb_func
 notImplementedFunction:
+    store_state
+    
     mov  r0, 1       @ stdout
     ldr  r1, =unimplemented_msg
     mov  r2, 22      @ size
     mov  r7, 4       @ write syscall
     svc  0
-
+    
     mov  r0, 1
     and  r1, word, 0xff
     bl   writeHexByte    
@@ -343,6 +406,8 @@ notImplementedFunction:
     mov  r7, 4       @ write syscall
     svc  0
     
+    restore_state
+    
     b    femuEnd
 """)
 
@@ -350,6 +415,8 @@ notImplementedFunction:
 def generateSource(outputFile):    
     code = r"""
 {header}
+
+
 {opcodeHandlers}
 {femuFunction}
 {notImplementedFunction}
@@ -360,6 +427,8 @@ def generateSource(outputFile):
 
     .section .rodata
 {rodata}
+
+    .section text
 
 """.format(header = generateHeader(),
            opcodeHandlers = generateOpcodeHandlers(),
@@ -418,7 +487,7 @@ define sr
     reg
 end
 """.format(printStatements="\n    ".join(prints))
-    print(code)
+    #print(code)
     print("write", code.count("\n"), "lines to", outputFile)
     with open(outputFile, "w") as f:
         f.write(code)
