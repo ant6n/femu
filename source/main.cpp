@@ -41,12 +41,12 @@ static elf::ElfFile createEmulatedElf(const std::string& x86ElfPath,
     elf::ElfFile x86Elf(x86ElfPath);
     elf::ElfFile emuElf(emulatorElfPath);
     
-    /*
-    printf("target elf:\n");
-    targetElf.printProgramHeaders();
-    printf("emu elf:\n");
-    emuElf.printProgramHeaders();
-    */
+    
+    printf("x86 elf:\n");
+    x86Elf.printProgramHeaders();
+    //printf("emu elf:\n");
+    //emuElf.printProgramHeaders();
+    
     auto optionsCopy = options;
     optionsCopy.entryPoint = x86Elf.header().e_entry;
     

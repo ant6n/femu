@@ -3,8 +3,7 @@ import collections
 
 
 ####### HELPERS/OPCODE HELPERS ##########################################
-# into given string, inserts macros or format values from the override
-# align comments
+# given a string, inserts macros or format values from the 'override' definition, aligns comments
 # returns new string
 def format(string, **override):
     formatDict = dict(_macros, **_aliases)
@@ -78,6 +77,7 @@ _currentLabel = 0
 # will format the given code
 # macros need to be multiple lines
 # commensts the name of the macro on the first line
+# TODO - use asm macro definitions instead?
 def macro(name, code):
     code = format(code)
     assert code.count("\n") == 0 # TODO
@@ -93,8 +93,13 @@ _macros = dict()
 def alias(name, exp):
     globals()[name] = exp
     _aliases[name] = exp
-_aliases = dict()
+_aliases = collections.OrderedDict()
 
+def shared_constant(name, value):
+    _shared_constants[name] = value
+_shared_constants = collections.OrderedDict()
+
+    
 # given some asm code, will align the @ on the same level
 def alignComments(code):
     def hasCode(line):
@@ -147,6 +152,12 @@ registerAliases = collections.OrderedDict([
     ('nextHandler','r14'),
 ])
 
+shared_constant('FEMU_EXIT_SUCCESS', 0)
+shared_constant('FEMU_EXIT_FAILURE', 1)
+shared_constant('FEMU_EXIT_UNIMPLEMENTED_OPCODE', 2)
+shared_constant('FEMU_EXIT_INT3', 3)
+
+
 globals().update((k, k) for k in registerAliases)  # insert registers into global scope
 eregs = [eax, ecx, edx, ebx, esp, ebp, esi, edi] # index -> ereg
 
@@ -186,14 +197,6 @@ for op in byteOpcodesWithRegister(0x58): # pop reg
     {branchNext}
     """, reg=eregs[op.r])
 
-for op in byteOpcodes(0x90): # nop
-    op.define("""@ nop
-    {nextHandler1_1Byte}
-    {nextHandler2}
-    {nextWord_1Byte}
-    {branchNext}
-    """)
-
 for op in byteOpcodes(0x68): # push imm32
     op.define("""@ push imm32
     {nextWord_5Byte}
@@ -204,6 +207,30 @@ for op in byteOpcodes(0x68): # push imm32
     {branchNext}
     """, reg=eregs[op.r])
 
+for op in byteOpcodesWithRegister(0xB8): # mov imm32
+    op.define("""@ mov {reg}, imm32
+    {nextWord_5Byte}
+    ldr  scratch, [eip, -4]
+    {nextHandler1_0Byte}
+    {nextHandler2}
+    mov {reg}, scratch
+    {branchNext}
+    """, reg=eregs[op.r])
+
+for op in byteOpcodes(0x90): # nop
+    op.define("""@ nop
+    {nextHandler1_1Byte}
+    {nextHandler2}
+    {nextWord_1Byte}
+    {branchNext}
+    """)
+
+for op in byteOpcodes(0xCC): # int3
+    op.define("""@ int3
+    mov word, FEMU_EXIT_INT3
+    b femuEnd
+    """)    
+    
 Opcode(0xcd80).define( # int 0x80
 """
     {nextHandler1_2Byte}
@@ -231,18 +258,29 @@ def generateOpcodeHandlers():
         for i,opcode in enumerate(opcodes))
 
 
+
+
+####### ASSEMBLER HEADER #############################################
 def generateHeader():
     aliases = "\n".join(
-        "    {name:11} .req {reg}".format(name=name, reg=reg)
+        f"    {name:11} .req {reg}"
         for name, reg in registerAliases.items()
     )
-    return """
+    comma = ','
+    sharedConstants = "\n".join(
+        f"    .equ {name+comma:20} {value}"
+        for name, value in _shared_constants.items()
+    )
+    return f"""
     .syntax unified
     .thumb
     .extern writeHexByte
 
-
+    @ aliases
 {aliases}
+
+    @ shared constants
+{sharedConstants}
 
     .global femuHandlers
     .global fb      @ breakpoint
@@ -291,9 +329,13 @@ def generateHeader():
     ldr scratch, =stored_esp; ldr esp, [scratch]
 .endm
 
-    """.format(aliases=aliases)
+    """
 
 
+
+
+
+####### ASSEMBLER FUNCTIONS #############################################
 def generateFemuFunction():
     rodata(r"""
 msg:
@@ -316,10 +358,11 @@ stored_esp: .word 0
     """)
     
     return format(r"""
-    .global femuStart
+    # femuRun(void* pc, void* sp) -> result status
+    .global femuRun
     .thumb_func
-    .type femuStart, %function
-femuStart:
+    .type femuRun, %function
+femuRun:
     push {{lr}}
     push {{r4-r11}}
    
@@ -366,9 +409,12 @@ fb:
     {branchNext}
     
     
+@ femuEnd expects return value to be stored in register 'word'
 femuEnd:
     
     store_state
+
+    mov r0, word @ store return value in r0
 
     pop {{r4-r11}}
     pop {{pc}}
@@ -408,6 +454,8 @@ notImplementedFunction:
     
     restore_state
     
+    mov  word, FEMU_EXIT_UNIMPLEMENTED_OPCODE
+
     b    femuEnd
 """)
 
@@ -444,8 +492,8 @@ def generateSource(outputFile):
 
 
 
-
-def generateGDBRegisterPrint(outputFile):
+##### GENERATE OTHER FILES #########################################################################
+def generateGDBRegisterPrint(outputFilename):
     def replace(name):
         return (
             name
@@ -488,16 +536,37 @@ define sr
 end
 """.format(printStatements="\n    ".join(prints))
     #print(code)
-    print("write", code.count("\n"), "lines to", outputFile)
-    with open(outputFile, "w") as f:
+    print("write", code.count("\n"), "lines to", outputFilename)
+    with open(outputFilename, "w") as f:
         f.write(code)
     
-    
 
+def generateSharedConstantsHeader(outputFilename):
+    code = (
+        """
+#ifndef __shared_constants_h__
+#define __shared_constants_h__
+
+
+""" +
+        "\n".join(
+            f"#define {name:20} {value}" for name, value in _shared_constants.items()
+        )
+        + """
+
+
+#endif /* defined(__shared_constants_h__) */
+""")
+    print("write", code.count("\n"), "lines to", outputFilename)
+    with open(outputFilename, "w") as f:
+        f.write(code)
+
+
+##### MAIN #########################################################################################
 if __name__ == "__main__":
     generateSource("gen/opcode-handlers.s")
     generateGDBRegisterPrint("gen/register-gdb-print")
-
+    generateSharedConstantsHeader("gen/shared_constants.h")
 
     
 
