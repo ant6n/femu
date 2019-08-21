@@ -207,7 +207,7 @@ for op in byteOpcodes(0x68): # push imm32
     {branchNext}
     """, reg=eregs[op.r])
 
-for op in byteOpcodesWithRegister(0xB8): # mov imm32
+for op in byteOpcodesWithRegister(0xB8): # mov reg, imm32
     op.define("""@ mov {reg}, imm32
     {nextWord_5Byte}
     ldr  scratch, [eip, -4]
@@ -217,6 +217,17 @@ for op in byteOpcodesWithRegister(0xB8): # mov imm32
     {branchNext}
     """, reg=eregs[op.r])
 
+for op in byteOpcodes(0xA3): # mov ax, [imm32]
+    op.define("""@ mov ax, [imm32]
+    {nextWord_5Byte}
+    ldr  scratch, [eip, -4]
+    {nextHandler1_0Byte}
+    {nextHandler2}
+    str eax, [scratch]
+    {branchNext}
+    """, reg=eregs[op.r])
+
+    
 for op in byteOpcodes(0x90): # nop
     op.define("""@ nop
     {nextHandler1_1Byte}
