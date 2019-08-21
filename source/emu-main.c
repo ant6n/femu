@@ -42,93 +42,126 @@ void _start() {
 
 
 void print_welcome(char* pc) {
-    write(1, "hello femu ARM! x86 code:\n", 27);
+    fprints(1, "hello femu ARM! x86 code:\n");
     
     // print starting point
-    write(1, "entry point: 0x", 15);
-    writeHexWord(1, (int)pc);
-    write(1, "\n", 1);
+    fprints(1, "entry point: 0x");
+    fprintx(1, (int)pc);
+    fprints(1, "\n");
     
     // print first 20 bytes of program
-    write(1, "first bytes: ", 14);
+    fprints(1, "first bytes: ");
     int i = 0;
     for (i = 0; i < 20; i++) {
         writeHexByte(1, pc[i]);
-        write(1, " ", 1);
+        fprints(1, " ");
     }
-    write(1, "\n", 1);
+    fprints(1, "\n");
 }
 
 void print_result(int result_status) {
-    write(1, "finished execution\n", 19);
-    write(1, "eip: 0x", 7); writeHexWord(1, stored_eip); write(1, "\n", 1);
-    write(1, "eax: 0x", 7); writeHexWord(1, stored_eax); write(1, "\n", 1);
-    write(1, "ebx: 0x", 7); writeHexWord(1, stored_ebx); write(1, "\n", 1);
-    write(1, "ecx: 0x", 7); writeHexWord(1, stored_ecx); write(1, "\n", 1);
-    write(1, "edx: 0x", 7); writeHexWord(1, stored_edx); write(1, "\n", 1);
-    write(1, "esi: 0x", 7); writeHexWord(1, stored_esi); write(1, "\n", 1);
-    write(1, "edi: 0x", 7); writeHexWord(1, stored_edi); write(1, "\n", 1);
-    write(1, "ebp: 0x", 7); writeHexWord(1, stored_ebp); write(1, "\n", 1);
-    write(1, "esp: 0x", 7); writeHexWord(1, stored_esp); write(1, "\n", 1);
+    fprints(1, "finished execution\n");
+    fprints(1, "eip: 0x"); fprintx(1, stored_eip); fprints(1, "\n");
+    fprints(1, "eax: 0x"); fprintx(1, stored_eax); fprints(1, "\n");
+    fprints(1, "ebx: 0x"); fprintx(1, stored_ebx); fprints(1, "\n");
+    fprints(1, "ecx: 0x"); fprintx(1, stored_ecx); fprints(1, "\n");
+    fprints(1, "edx: 0x"); fprintx(1, stored_edx); fprints(1, "\n");
+    fprints(1, "esi: 0x"); fprintx(1, stored_esi); fprints(1, "\n");
+    fprints(1, "edi: 0x"); fprintx(1, stored_edi); fprints(1, "\n");
+    fprints(1, "ebp: 0x"); fprintx(1, stored_ebp); fprints(1, "\n");
+    fprints(1, "esp: 0x"); fprintx(1, stored_esp); fprints(1, "\n");
     
     switch(result_status) {
     case FEMU_EXIT_SUCCESS:
-        write(1, "result: FEMU_EXIT_SUCCESS\n", 26); break;
+        fprints(1, "result: FEMU_EXIT_SUCCESS\n"); break;
     case FEMU_EXIT_FAILURE:
-        write(1, "result: FEMU_EXIT_FAILURE\n", 26); break;
+        fprints(1, "result: FEMU_EXIT_FAILURE\n"); break;
     case FEMU_EXIT_UNIMPLEMENTED_OPCODE:
-        write(1, "result: FEMU_EXIT_UNIMPLEMENTED_OPCODE\n", 40); break;
+        fprints(1, "result: FEMU_EXIT_UNIMPLEMENTED_OPCODE\n"); break;
     case FEMU_EXIT_INT3:
-        write(1, "result: FEMU_EXIT_INT3\n", 24); break;
+        fprints(1, "result: FEMU_EXIT_INT3\n"); break;
     }
 }
 
 
+// writes a json '    <name>: 0x<hexvalue>(,)\n' to fd
+void writeJsonPair(int fd, char* name, int value, int testValue, int putComma) {
+    if ((value != 0) || (!testValue)) {
+        fprints(fd, "    \"");
+        fprints(fd, name);
+        fprints(fd, "\": \"0x");
+        fprintx(fd, value);
+        if (putComma) {
+            fprints(fd, "\",\n");
+        } else {
+            fprints(fd, "\"\n");
+        }
+    }
+}
+
 void outputJsonResult() {
-    write(1, "output json\n", 12);
+    fprints(1, "output json\n");
     int fd = Open(options.testJsonOut, O_CREAT|O_WRONLY|O_TRUNC, S_IRUSR|S_IWUSR);
-    write(1, options.testJsonOut, 12);
+    //fprints(1, "write json out: ");
+    //fprints(1, options.testJsonOut);
+    //fprints(1, "\n");
     
     if (fd < 0) {
-        write(1, "Error when opening file for json output\n", 40);
+        fprints(1, "Error opening file for json output\n");
         return;
     }
     
-    write(fd, "{\n", 2);
-    // "test_name": "base-0111-mov-0x789ABCDE->[0x800003F4])","
-    //"test_code": "mov eax, strict dword 0x789ABCDE;mov [0x800003F4], eax;int3",
-    write(fd, "  \"result_registers\": {\n", 24);
-#define OUTPUT_REG(REG) if (stored_##REG) { \
-        write(fd, "    \"" #REG "\": \"0x", 14); \
-        writeHexWord(fd, stored_##REG); \
-        write(fd, "\",\n", 3); }
-    OUTPUT_REG(eip);
-    OUTPUT_REG(eax);
-    OUTPUT_REG(ebx);
-    OUTPUT_REG(ecx);
-    OUTPUT_REG(edx);
-    OUTPUT_REG(esi);
-    OUTPUT_REG(edi);
-    OUTPUT_REG(ebp);
-    OUTPUT_REG(esp);
-    // TODO eflags
-    write(fd, "    \"eflags\": \"0x", 17); writeHexWord(fd, 0); write(fd, "\"\n", 2);
+    // write registers
+    fprints(fd,
+          "{\n"
+          "  \"result_registers\": {\n");
     
-    write(fd, "\n  },\n", 6);
-    write(fd, "  \"result_memory\": {\n", 21);
-    write(fd, "    \"start\": \"0x", 16); writeHexWord(fd, 0x7fffe000); write(fd, "\",\n", 3);
-    write(fd, "    \"end\":   \"0x", 16); writeHexWord(fd, 0x80000410); write(fd, "\",\n", 3);
-    write(fd, "    \"nonzeros\": {\n", 18);
-    // TODO memory
-    //"      \"0x800003f0\": \"00 00 00 00 de bc 9a 78\"\n"
-    write(fd, "    }\n", 6);
-    write(fd, "  }\n", 4);
-    write(fd, "}\n", 2);
+    writeJsonPair(fd, "eip", stored_eip, 0, 1);
+    writeJsonPair(fd, "eax", stored_eax, 1, 1);
+    writeJsonPair(fd, "ebx", stored_ebx, 1, 1);
+    writeJsonPair(fd, "ecx", stored_ecx, 1, 1);
+    writeJsonPair(fd, "edx", stored_edx, 1, 1);
+    writeJsonPair(fd, "esi", stored_esi, 1, 1);
+    writeJsonPair(fd, "edi", stored_edi, 1, 1);
+    writeJsonPair(fd, "ebp", stored_ebp, 1, 1);
+    writeJsonPair(fd, "esp", stored_esp, 1, 1);
+    writeJsonPair(fd, "eflags", 0xABCDEF, 0, 0);
     
-    // close
-    write(1, "\nclose: ", 8);
-    writeHexWord(1, close(fd));
+    // write nonzero memory in test range
+    fprints(fd,
+          "  },\n"
+          "  \"result_memory\": {\n");
+    writeJsonPair(fd, "start", 0x7fffe000, 1, 1);
+    writeJsonPair(fd, "end",   0x80000010, 1, 1);
+    fprints(fd, "    \"nonzeros\": {\n");
+    
+    uint64_t* p = (void*)((options.testMemStart >> 3) << 3);
+    void* end = (void*)(options.testMemEnd);
+    char* delim = "";
+    while ((void*)p <= end) {
+        if (*p) {
+            fprints(fd, delim);
+            fprints(fd, "      \"");
+            fprintx(fd, (uint32_t)p);
+            fprints(fd, "\": \"");
+            for (int i = 0; i < 8; i++) {
+                if (i != 0) fprints(fd, " ");
+                writeHexByte(fd, ((*p) >> (8*i)) & 0xFF);
+            }
+            fprints(fd, "\"");
+            delim = ",\n";
+        }
+        p++;
+    }
+    fprints(fd,
+          "\n"
+          "    }\n"
+          "  }\n"
+          "}\n");
+    
+    close(fd);
 }
+
 
 
 int emu_main(void* x86_stack_pointer) {

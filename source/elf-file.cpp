@@ -136,7 +136,7 @@ namespace  elf {
     
     
     void ElfFile::printProgramHeaders() const {
-      int numHeaders = numSegments();
+        int numHeaders = numSegments();
         if (numHeaders == 0) {
             printf("There are no program headers in this file.\n");
         }

@@ -17,6 +17,8 @@ extern "C" {
         uintptr_t entryPoint;
         int8_t verbose;
         char testJsonOut[EMU_OPTIONS_MAX_FILENAME_LENGTH]; // if defined, use test mode: output state on int3
+        uintptr_t testMemStart; // memory to output when using testJsonOut
+        uintptr_t testMemEnd;
     } EmuOptions;
 
 

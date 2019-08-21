@@ -109,10 +109,21 @@ void writeHexByte(int f, char c) {
     write(f, s, 2);
 }
 
-void writeHexWord(int f, int w) {
+void writeHexWord(int f, unsigned int w) {
     writeHexByte(f, (char)((int)w >> 24));
     writeHexByte(f, (char)((int)w >> 16));
     writeHexByte(f, (char)((int)w >> 8));
     writeHexByte(f, (char)((int)w));
 }
 
+int strlen(const char* s) {
+    for (int i = 0; ; i++) if (s[i] == '\0') return i;
+}
+
+void fprints(int f, const char* s) {
+    write(f, s, strlen(s));
+}
+
+void fprintx(int f, unsigned int w) {
+    writeHexWord(f, w);
+}

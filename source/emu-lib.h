@@ -42,7 +42,12 @@ int close(int fd);
 void exit(int errorCode) __attribute__((noreturn));
 
 void writeHexByte(int f, char c);
-void writeHexWord(int f, int w);
+void writeHexWord(int f, unsigned int w);
+
+int strlen(const char* s);
+
+void fprints(int f, const char* s);
+void fprintx(int f, unsigned int w); // alias for writeHexWord
 
 
 #endif /* defined(__emu_lib__) */

@@ -35,27 +35,60 @@ static size_t align(int offset, int alignment) {
     return result;
 }
 
+
+/** returns the loaded begin/end memory address of the first loadable R/W/noX segment,
+    or <0,0> if not found */
+std::pair<uintptr_t, uintptr_t> getReadWriteMemory(const elf::ElfFile& elf) {
+    auto numSegments = elf.numSegments();
+    for (int i = 0; i < numSegments; i++) {
+        auto header = elf.getSegment(i).header();
+        if ((header.p_type == PT_LOAD)
+            && (header.p_flags & PF_R)
+            && (header.p_flags & PF_W)
+            && (!(header.p_flags & PF_X))) {
+            uintptr_t begin = header.p_vaddr;
+            uintptr_t size = header.p_memsz;
+            printf("found RW segment at address %x, size %x\n", header.p_vaddr, header.p_memsz);
+            return { begin, begin + size };
+        }
+    }
+    printf("didn't find RW segment\n");
+    return { 0, 0 };
+}
+
+
 /** create emulator for the spcified elf defined by the target path, by injecting it into the emu */
 static elf::ElfFile createEmulatedElf(const std::string& x86ElfPath,
                                       const EmuOptions& options) { //, const std::string& outputPath) {
     elf::ElfFile x86Elf(x86ElfPath);
     elf::ElfFile emuElf(emulatorElfPath);
-    
-    
-    printf("x86 elf:\n");
-    x86Elf.printProgramHeaders();
+
+    //printf("x86 elf:\n");
+    //x86Elf.printProgramHeaders();
     //printf("emu elf:\n");
     //emuElf.printProgramHeaders();
-    
+
+    // set up options
     auto optionsCopy = options;
     optionsCopy.entryPoint = x86Elf.header().e_entry;
     
+    if (optionsCopy.testJsonOut[0]) {
+        if ((optionsCopy.testMemStart == 0) && (optionsCopy.testMemEnd == 0)) {
+            auto readWriteMemory = getReadWriteMemory(x86Elf);
+            optionsCopy.testMemStart = readWriteMemory.first;
+            optionsCopy.testMemEnd = readWriteMemory.second;
+        }
+        printf("print output json to '%s' with mem test range 0x%x-0x%x\n",
+               optionsCopy.testJsonOut, optionsCopy.testMemStart, optionsCopy.testMemEnd);
+    }
+    
+    // inject options, x85 into emulator
     if (not injectEmuOptions(emuElf, optionsCopy)) {
 		std::cerr << "failed to inject emulator into program" << std::endl;
 		exit(EXIT_FAILURE);
     }
-        
     elf::ElfFile outputElf = injectElf(emuElf, x86ElfPath);
+    
     return outputElf;
 }
 
@@ -155,16 +188,18 @@ bool injectEmuOptions(elf::ElfFile& emuElf, const EmuOptions& emuOptions) {
 }
 
 
-int main(int argc, char *const argv[], char *const envp[]) {
+/** parses options and returns the options in the reference args,
+    as well as the number of consumed argv args */
+int parseArgs(int argc, char *const argv[], char* const envp[],
+              EmuOptions& emuOptions, std::string& emulatedOutputFilename) {
     // parse options
-    EmuOptions emuOptions;
-    std::string emulatedOutputFilename = "";
-    const char* short_options = "vht:e:";
+    const char* short_options = "vht:m:e:";
     static struct option long_options[] = {
-        {"verbose", no_argument,       0, 'v'},
-        {"help",    no_argument,       0, 'h'},
-        {"test",    required_argument, 0, 't'},
-        {"emu-file",required_argument, 0, 'e'},
+        {"verbose",    no_argument,       0, 'v'},
+        {"help",       no_argument,       0, 'h'},
+        {"test",       required_argument, 0, 't'},
+        {"test-memory",required_argument, 0, 'm'},
+        {"emu-file",   required_argument, 0, 'e'},
         {0, 0, 0, 0}
     };
     while (1) {
@@ -198,39 +233,57 @@ int main(int argc, char *const argv[], char *const envp[]) {
             memcpy(emuOptions.testJsonOut, optarg, numChars + 1);
             break;
         }
+        case 'm':
+            if (sscanf(optarg,"%x,%x", &emuOptions.testMemStart, &emuOptions.testMemEnd) != 2) {
+                printf("failed scanning parameter '%s', expected 0xAAA,0xBBB\n", optarg);
+                exit(1);
+            }
+            break;
+        
         case 'f':
             printf ("option -f with value `%s'\n", optarg);
             break;
         
         case '?':
             /* getopt_long already printed an error message. */
+            exit(1);
             break;
         
         default:
             printf("default case in opt-parsing, unknown case (%d): abort", c);
-            abort ();
+            exit(1);
         }
     }
-    
-    auto new_argv = &(argv[optind]);
-    int new_argc = argc - optind;
-    if (new_argc <= 0) {
+
+    if (optind >= argc) {
         printf("no file supplied for emulation\n");
         exit(1);
     }    
+    return optind;
+}
+
+
+
+int main(int argc, char *const argv[], char *const envp[]) {
+
+    // parse/set up options
+    EmuOptions emuOptions = {0};
+    std::string emulatedOutputFilename = "";
+    int numParsedArgs = parseArgs(argc, argv, envp, emuOptions, emulatedOutputFilename);    
+    auto new_argv = &(argv[numParsedArgs]);
+    int new_argc = argc - numParsedArgs;
     std::string path = new_argv[0];
-    // done parsing options
-
-
-    // create new elf and run it
+    
+    // create combined elf
     elf::ElfFile emulatedElf = createEmulatedElf(path, emuOptions);
-
+    
     // output elf if necessary
     if (emulatedOutputFilename.length() > 0) {
         std::cout << "write emulated elf to " << emulatedOutputFilename << std::endl;
         emulatedElf.writeToFile(emulatedOutputFilename);
     }
     
+    // run
     std::cout << "running emulated elf:" << std::endl;
     emulatedElf.execute(new_argv, envp);
     
