@@ -3,3 +3,4 @@ gen/*
 bin/*
 *pyc
 *\#
+test/test-elf*

@@ -99,7 +99,7 @@ void writeJsonPair(int fd, char* name, int value, int testValue, int putComma) {
     }
 }
 
-void outputJsonResult() {
+void outputJsonResult(int result_status) {
     fprints(1, "output json\n");
     int fd = Open(options.testJsonOut, O_CREAT|O_WRONLY|O_TRUNC, S_IRUSR|S_IWUSR);
     //fprints(1, "write json out: ");
@@ -110,11 +110,30 @@ void outputJsonResult() {
         fprints(1, "Error opening file for json output\n");
         return;
     }
-    
+
+    // write result status
+    int failure = 0;
+    switch(result_status) {
+    case FEMU_EXIT_SUCCESS:
+        fprints(fd, "{\n  \"result_status\": \"EXIT_SUCCESS\",\n"); break;
+    case FEMU_EXIT_INT3:
+        fprints(fd, "{\n  \"result_status\": \"EXIT_INT3\",\n"); break;
+    case FEMU_EXIT_FAILURE:
+        fprints(fd, "{\n  \"result_status\": \"EXIT_FAILURE\",\n"); failure=1; break;
+    case FEMU_EXIT_UNIMPLEMENTED_OPCODE:
+        fprints(fd, "{\n  \"result_status\": \"EXIT_UNIMPLEMENTED_OPCODE\",\n"); failure=1; break;
+    }
+    if (failure) {
+        fprints(fd, "  \"result_status_test_failed\": true\n}\n");
+        close(fd);
+        return;
+    } else {
+        fprints(fd, "  \"result_status_test_failed\": false,\n");
+    }
+        
     // write registers
     fprints(fd,
-          "{\n"
-          "  \"result_registers\": {\n");
+            "  \"result_registers\": {\n");
     
     writeJsonPair(fd, "eip", stored_eip, 0, 1);
     writeJsonPair(fd, "eax", stored_eax, 1, 1);
@@ -125,14 +144,14 @@ void outputJsonResult() {
     writeJsonPair(fd, "edi", stored_edi, 1, 1);
     writeJsonPair(fd, "ebp", stored_ebp, 1, 1);
     writeJsonPair(fd, "esp", stored_esp, 1, 1);
-    writeJsonPair(fd, "eflags", 0xABCDEF, 0, 0);
+    writeJsonPair(fd, "eflags", 0x00000202, 0, 0);
     
     // write nonzero memory in test range
     fprints(fd,
           "  },\n"
           "  \"result_memory\": {\n");
-    writeJsonPair(fd, "start", 0x7fffe000, 1, 1);
-    writeJsonPair(fd, "end",   0x80000010, 1, 1);
+    writeJsonPair(fd, "start", options.testMemStart, 1, 1);
+    writeJsonPair(fd, "end",   options.testMemEnd, 1, 1);
     fprints(fd, "    \"nonzeros\": {\n");
     
     uint64_t* p = (void*)((options.testMemStart >> 3) << 3);
@@ -141,7 +160,7 @@ void outputJsonResult() {
     while ((void*)p <= end) {
         if (*p) {
             fprints(fd, delim);
-            fprints(fd, "      \"");
+            fprints(fd, "      \"0x");
             fprintx(fd, (uint32_t)p);
             fprints(fd, "\": \"");
             for (int i = 0; i < 8; i++) {
@@ -174,8 +193,8 @@ int emu_main(void* x86_stack_pointer) {
     
     print_result(result_status);
     
-    if (options.testJsonOut[0] && result_status == FEMU_EXIT_INT3) {
-        outputJsonResult();
+    if (options.testJsonOut[0]) {
+        outputJsonResult(result_status);
     }
     
     exit(0);

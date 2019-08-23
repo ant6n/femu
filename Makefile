@@ -43,3 +43,6 @@ femu-inject: bin/emu-main.o bin/emu-lib.o bin/opcode-handlers.o
 
 clean:
 	rm bin/*.o gen/* femu-inject femu
+
+test: all
+	python3 test/runtests.py

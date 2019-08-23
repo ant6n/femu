@@ -238,6 +238,7 @@ for op in byteOpcodes(0x90): # nop
 
 for op in byteOpcodes(0xCC): # int3
     op.define("""@ int3
+    {nextWord_1Byte}
     mov word, FEMU_EXIT_INT3
     b femuEnd
     """)    
