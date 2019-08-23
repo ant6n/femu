@@ -66,7 +66,10 @@ def run_test(test, verbose=False):
     # check failed status  of result
     if result['result_status_test_failed']:
         print(failed_message)
-        print(f"  failed with status {result['result_status']}")
+        suffix = ''
+        if result['result_status'] == 'EXIT_UNIMPLEMENTED_OPCODE':
+            suffix = f" with opcode: '{result['unimplemented_opcode']}'"
+        print(f"  failed with status {result['result_status']}" + suffix)
         return False
     
     

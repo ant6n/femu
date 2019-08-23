@@ -147,7 +147,7 @@ registerAliases = collections.OrderedDict([
     
     ('eip',        'r6'),  # holds address of current instruction
     ('word',       'r12'), # opcode word
-
+    
     ('handlerBase','r11'), # set all handler bits to 1 to override
     ('nextHandler','r14'),
 ])
@@ -163,7 +163,7 @@ eregs = [eax, ecx, edx, ebx, esp, ebp, esi, edi] # index -> ereg
 
 
 
-macro('nextHandler1_0Byte', "ubfx nextHandler, word, 0, 16") # extract lower bytes
+macro('nextHandler1_0Byte', "uxth nextHandler, word") # extract lower bytes
 macro('nextHandler1_1Byte', "ubfx nextHandler, word, 8, 16") # extract middle bytes
 macro('nextHandler1_2Byte', "ubfx nextHandler, word, 16,16") # extract upper bytes
 macro('nextHandler2',       "orr  nextHandler, handlerBase, nextHandler, lsl {handlerShift}") 
@@ -242,6 +242,77 @@ for op in byteOpcodes(0xCC): # int3
     mov word, FEMU_EXIT_INT3
     b femuEnd
     """)    
+
+
+#for op in byteOpcodes(0x9C): # pushfd
+#    op.define("""@ pushfd
+#    {nextHandler1_1Byte}
+#    {nextHandler2}
+#    {nextWord_1Byte}
+#    {branchNext}
+#    """)
+#
+#for op in byteOpcodes(0x9D): # popfd
+#    op.define("""@ popfd
+#    {nextHandler1_1Byte}
+#    {nextHandler2}
+#    {nextWord_1Byte}
+#    mov r0, r0
+#    mov r0, r0
+#    mov r0, r0
+#    mov r0, r0
+#    mov r0, r0
+#    mov r0, r0
+#    mov r0, r0
+#    mov r0, r0
+#    mov r0, r0
+#    {branchNext}
+#    """)
+#
+#    
+#    
+##         ARM   X86
+# Sign/N   31     7
+# Zero     30     6
+# Carry    29     0
+# Overflow 28    11
+# parity    -     2 (result)
+# Adjust    -     4 (aux)
+#
+# should we pack aux and result together? - we only need the lowest bytes...
+#
+# arm->x86
+# SZCO
+#   move SPCR -> register -> shift various values into place
+#     spcr -> r1
+#     ubfx    r2, r1, 30, 2 (r2 holds 0b00NZ)
+#     ubfx    r3, r1, 29, 1 (r3 holds 0b000C)
+#     orr     r2, r3, r2, lsl #6 (r2 holds 0bSZ00000C)
+#     (...)
+#  Adjust flag
+#     xor     scratch, aux, res
+#     and     scratch, 0x1  @ already in correct position
+#
+#  Parity
+#     extract byte<-result
+#     ldr     scratch, [LUT-byte]
+#     orr     flags, scratch
+#
+#     xor     r1, result, result >> 4
+#     xor     r1, r1 >> 2
+#     xor     r1, r1 << 1
+#     and     r1, r1, 2
+#     orr     flags, r1
+#
+#   read move the bit
+# parity:
+#
+#
+#
+#
+#
+#
+
     
 Opcode(0xcd80).define( # int 0x80
 """
@@ -307,7 +378,10 @@ def generateHeader():
     .global stored_edi
     .global stored_ebp
     .global stored_esp
-    
+
+    @ other state
+    .global stored_unimplemented_opcode;
+
     .align  15
 
 @ macros
@@ -348,6 +422,9 @@ def generateHeader():
 
 
 ####### ASSEMBLER FUNCTIONS #############################################
+#def addFunction(text="", rodata="" data=""):
+#
+
 def generateFemuFunction():
     rodata(r"""
 msg:
@@ -367,6 +444,9 @@ stored_esi: .word 0
 stored_edi: .word 0
 stored_ebp: .word 0
 stored_esp: .word 0
+
+@other public values
+stored_unimplemented_opcode: .word 0
     """)
     
     return format(r"""
@@ -449,6 +529,10 @@ notImplementedFunction:
     mov  r2, 22      @ size
     mov  r7, 4       @ write syscall
     svc  0
+    
+    ldr  r0, =stored_unimplemented_opcode
+    ubfx r1, word, 0, 16
+    str  r1, [r0]
     
     mov  r0, 1
     and  r1, word, 0xff

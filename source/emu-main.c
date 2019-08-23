@@ -13,6 +13,7 @@ extern uint32_t stored_esi;
 extern uint32_t stored_edi;
 extern uint32_t stored_ebp;
 extern uint32_t stored_esp;
+extern uint32_t stored_unimplemented_opcode;
 
 
 //char* entryPoint = (char*)(EMU_OPTIONS_MAGIC);
@@ -77,7 +78,12 @@ void print_result(int result_status) {
     case FEMU_EXIT_FAILURE:
         fprints(1, "result: FEMU_EXIT_FAILURE\n"); break;
     case FEMU_EXIT_UNIMPLEMENTED_OPCODE:
-        fprints(1, "result: FEMU_EXIT_UNIMPLEMENTED_OPCODE\n"); break;
+        fprints(1, "result: FEMU_EXIT_UNIMPLEMENTED_OPCODE: ");
+        writeHexByte(1, stored_unimplemented_opcode & 0xFF);
+        fprints(1, " ");
+        writeHexByte(1, (stored_unimplemented_opcode >> 8) & 0xFF);
+        fprints(1, "\n");
+        break;
     case FEMU_EXIT_INT3:
         fprints(1, "result: FEMU_EXIT_INT3\n"); break;
     }
@@ -121,7 +127,14 @@ void outputJsonResult(int result_status) {
     case FEMU_EXIT_FAILURE:
         fprints(fd, "{\n  \"result_status\": \"EXIT_FAILURE\",\n"); failure=1; break;
     case FEMU_EXIT_UNIMPLEMENTED_OPCODE:
-        fprints(fd, "{\n  \"result_status\": \"EXIT_UNIMPLEMENTED_OPCODE\",\n"); failure=1; break;
+        fprints(fd, "{\n  \"result_status\": \"EXIT_UNIMPLEMENTED_OPCODE\",\n"
+                    "  \"unimplemented_opcode\": \"");
+        writeHexByte(fd, stored_unimplemented_opcode & 0xFF);
+        fprints(fd, " ");
+        writeHexByte(fd, (stored_unimplemented_opcode >> 8) & 0xFF);
+        fprints(fd, "\",\n");
+        failure=1;
+        break;
     }
     if (failure) {
         fprints(fd, "  \"result_status_test_failed\": true\n}\n");
