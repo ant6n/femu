@@ -18,7 +18,7 @@ ELF_FILE = path.join(TEMP_DIR, 'test-elf')
 JSON_FILE = path.join(TEMP_DIR, 'test-elf.json')
 FEMU_EXE = './femu'
 TESTS_FOLDER = path.join(TEST_DIR, 'x86-unit-tests')
-
+INJECT_ELF_FILE = path.join(TEST_DIR, 'test-emu-inject')
 
 def execute(cmd, verbose=False):
     if verbose: print('run:', cmd)
@@ -44,7 +44,7 @@ def dict_diff(a, b, default=None):
     return result
 
 
-def run_test(test, verbose=False):
+def run_test(test, verbose=False, create_extra_files=False):
     failed_message= f"FAIL: '{test['test_name']}', testing '{test['test_code']}'"
     if not verbose: failed_message = "\n" + failed_message
     
@@ -60,7 +60,8 @@ def run_test(test, verbose=False):
         os.remove(JSON_FILE)
     
     # execute and load result
-    exec_result = execute(f'{FEMU_EXE} -t {JSON_FILE} -m {mem_range} {ELF_FILE}', verbose=verbose)
+    e = f' -e {INJECT_ELF_FILE}' if create_extra_files else ''
+    exec_result = execute(f'{FEMU_EXE} -t {JSON_FILE} -m {mem_range}{e} {ELF_FILE}', verbose=verbose)
     with open(JSON_FILE) as f:
         result = json.load(f)
     # ?print(exec_result.stdout.decode('utf-8'))
@@ -108,7 +109,7 @@ def run_test(test, verbose=False):
         return True
 
 
-def run_test_for_file(file_name, verbose=False, pattern=None):
+def run_test_for_file(file_name, verbose=False, pattern=None, create_extra_files=False):
     print(f"=== run tests from '{file_name}' ===")
     with open(file_name) as f:
         data = json.load(f)
@@ -119,7 +120,7 @@ def run_test_for_file(file_name, verbose=False, pattern=None):
         if pattern is not None and not re.match(pattern, test['test_name']):
             continue
         if verbose: print("test", test['test_name'])
-        if run_test(test, verbose=verbose):
+        if run_test(test, verbose=verbose, create_extra_files=create_extra_files):
             if not verbose: print(".", end="", flush=True)
             num_pass += 1
         else:
@@ -130,10 +131,11 @@ def run_test_for_file(file_name, verbose=False, pattern=None):
     return (num_pass, num_fail)
 
 
-def run_tests(file_names, verbose=False, pattern=None):
+def run_tests(file_names, verbose=False, pattern=None, create_extra_files=False):
     num_pass, num_fail = (0, 0)
     for file_name in file_names:
-        s,f = run_test_for_file(file_name, verbose=verbose, pattern=pattern)
+        s,f = run_test_for_file(file_name, verbose=verbose, pattern=pattern,
+                                create_extra_files=create_extra_files)
         num_pass += s
         num_fail += f
     print()
@@ -142,27 +144,30 @@ def run_tests(file_names, verbose=False, pattern=None):
 
 
 ##### MAIN #########################################################################################
-def main(argv=[], verbose=False):
+def main(argv=[]):
     parser = argparse.ArgumentParser(
         description='Running Femu Unit Tests',
     )
     
     parser.add_argument('-v', '--verbose', action="store_true", default=False)
+    parser.add_argument('-e', '--create-extra-files', action="store_true", default=False)
     parser.add_argument('-p', '--pattern', action="store", dest="pattern",
                         help='only run tests whose name start with given regex pattern')
     parser.add_argument(nargs="*", metavar='TESTFILE.json', dest='files',
                         help='only run tests from given json filenames (otherwise run all)')
     
     args = parser.parse_args()
-    print(args)
+    #print(args)
+    
     if len(args.files) == 0 or args.files == ['all']:
         file_names = glob.glob(path.join(TESTS_FOLDER, '*.json'))
     else:
         file_names = args.files
     
     #runtests
-    run_tests(file_names, verbose=verbose, pattern=args.pattern)
+    run_tests(file_names, verbose=args.verbose, pattern=args.pattern,
+              create_extra_files=args.create_extra_files)
 
 if __name__ == "__main__":
-    main(sys.argv, verbose=False)
+    main(sys.argv)
 

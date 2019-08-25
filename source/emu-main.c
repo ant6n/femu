@@ -13,6 +13,7 @@ extern uint32_t stored_esi;
 extern uint32_t stored_edi;
 extern uint32_t stored_ebp;
 extern uint32_t stored_esp;
+extern uint32_t stored_eflags;
 extern uint32_t stored_unimplemented_opcode;
 
 
@@ -71,6 +72,7 @@ void print_result(int result_status) {
     fprints(1, "edi: 0x"); fprintx(1, stored_edi); fprints(1, "\n");
     fprints(1, "ebp: 0x"); fprintx(1, stored_ebp); fprints(1, "\n");
     fprints(1, "esp: 0x"); fprintx(1, stored_esp); fprints(1, "\n");
+    fprints(1, "eflags: 0x"); fprintx(1, stored_eflags); fprints(1, "\n");
     
     switch(result_status) {
     case FEMU_EXIT_SUCCESS:
@@ -157,7 +159,7 @@ void outputJsonResult(int result_status) {
     writeJsonPair(fd, "edi", stored_edi, 1, 1);
     writeJsonPair(fd, "ebp", stored_ebp, 1, 1);
     writeJsonPair(fd, "esp", stored_esp, 1, 1);
-    writeJsonPair(fd, "eflags", 0x00000202, 0, 0);
+    writeJsonPair(fd, "eflags", stored_eflags, 0, 0);
     
     // write nonzero memory in test range
     fprints(fd,

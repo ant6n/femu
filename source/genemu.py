@@ -63,7 +63,13 @@ def text(code, **kwargs):
 _text = []
 
 
-# returns a label with the given optional suffix
+def function(text="", rodata="", data=""):
+    globals()['text'](text)
+    globals()['rodata'](rodata)
+    globals()['data'](data)
+
+
+# returns a new label with uniq name, with the given optional suffix
 def label(suffix=""):
     label = "L%d" % _currentLabel
     _currentLabel += 1
@@ -98,6 +104,7 @@ _aliases = collections.OrderedDict()
 def shared_constant(name, value):
     _shared_constants[name] = value
 _shared_constants = collections.OrderedDict()
+
 
     
 # given some asm code, will align the @ on the same level
@@ -244,13 +251,95 @@ for op in byteOpcodes(0xCC): # int3
     """)    
 
 
-#for op in byteOpcodes(0x9C): # pushfd
-#    op.define("""@ pushfd
-#    {nextHandler1_1Byte}
-#    {nextHandler2}
-#    {nextWord_1Byte}
-#    {branchNext}
-#    """)
+
+
+## FLAGS ############################
+##         ARM   X86
+# Sign/N   31     7
+# Zero     30     6
+# Carry    29     0
+# Overflow 28    11
+# parity    -     2 (result)
+# Adjust    -     4 (aux)
+for op in byteOpcodes(0x9C): # pushfd
+    op.define("""@ pushfd
+    b pushfd_impl
+    """)
+
+function(text="""
+    # femuRun(void* pc, void* sp) -> result status
+    .thumb_func
+    .type pushfd_impl, %function
+pushfd_impl: @ pushfd
+    {nextHandler1_1Byte}
+    {nextHandler2}
+    {nextWord_1Byte}
+    
+    ldr  scratch, =mem_arm_sp @ load arm stack at scratch
+    ldr  scratch, [scratch]
+    stmfd scratch!, {{r0-r3}} @ push registers (store multiple - full descending)
+    
+    get_eflags
+    
+    push {{ r0 }}
+    
+    ldmfd scratch, {{r0-r3}} @ restore regs
+    {branchNext}
+""")
+
+
+
+for op in byteOpcodes(0x9D): # popfd
+    op.define("""@ pushfd
+    b popfd_impl
+    """)
+##         ARM   X86
+# Sign/N   31     7
+# Zero     30     6
+# Carry    29     0
+# Overflow 28    11
+# parity    -     2 (result)
+# Adjust    -     4 (aux)
+
+function(text="""
+    # femuRun(void* pc, void* sp) -> result status
+    .global popfd_impl
+    .thumb_func
+    .type popfd_impl, %function
+popfd_impl: @ popfd
+    {nextHandler1_1Byte}
+    {nextHandler2}
+    {nextWord_1Byte}
+    
+    ldr  scratch, =mem_arm_sp @ load arm stack at scratch
+    ldr  scratch, [scratch]
+    stmfd scratch!, {{r0-r3}} @ push registers (store multiple - full descending)
+
+    pop {{ r0 }} @ get flags from stack in r0
+    
+    @ register-stored flags
+    ubfx result, r0, 2, 1  @ p-flag -> result, by copying bit 2 into result
+    and  aux, r0, 0x10     @ aux-flag -> aux (since result has 0 bit result xor aux will be aux)
+    
+    @ memory-stored flags
+    and  r3, r0, 0x0600     @ only DF, IF may be set (see line below for bit(1))
+    orr  r3, r3, 0x0002     @ bit(1) will be set always
+    orr  r3, r3, 0x0200     @ IF will be set always
+    ldr  r1, =mem_eflags    @ store in memory-stored flags
+    str  r3, [r1]
+    
+    @ NZCo flags -> CSPR        
+    ubfx r2, r0,11, 1       @ r2 holds 0b000o
+    ubfx r1, r0, 6, 2       @ r1 holds 0b00NZ    
+    bfi  r2, r0, 1, 1       @ r2 holds 0b00Co
+    lsl  r1, r1, 30         @ r1 is    0bNZ00...
+    orr  r1, r1, r2, lsl 28 @ r1 is    0bNZCo0...
+    msr  cpsr_f, r1         @ place r1 in status
+    
+    ldmfd scratch, {{r0-r3}} @ restore regs
+    {branchNext}
+
+""")
 #
 #for op in byteOpcodes(0x9D): # popfd
 #    op.define("""@ popfd
@@ -271,38 +360,11 @@ for op in byteOpcodes(0xCC): # int3
 #
 #    
 #    
-##         ARM   X86
-# Sign/N   31     7
-# Zero     30     6
-# Carry    29     0
-# Overflow 28    11
-# parity    -     2 (result)
-# Adjust    -     4 (aux)
 #
 # should we pack aux and result together? - we only need the lowest bytes...
 #
 # arm->x86
 # SZCO
-#   move SPCR -> register -> shift various values into place
-#     spcr -> r1
-#     ubfx    r2, r1, 30, 2 (r2 holds 0b00NZ)
-#     ubfx    r3, r1, 29, 1 (r3 holds 0b000C)
-#     orr     r2, r3, r2, lsl #6 (r2 holds 0bSZ00000C)
-#     (...)
-#  Adjust flag
-#     xor     scratch, aux, res
-#     and     scratch, 0x1  @ already in correct position
-#
-#  Parity
-#     extract byte<-result
-#     ldr     scratch, [LUT-byte]
-#     orr     flags, scratch
-#
-#     xor     r1, result, result >> 4
-#     xor     r1, r1 >> 2
-#     xor     r1, r1 << 1
-#     and     r1, r1, 2
-#     orr     flags, r1
 #
 #   read move the bit
 # parity:
@@ -378,14 +440,18 @@ def generateHeader():
     .global stored_edi
     .global stored_ebp
     .global stored_esp
+    .global stored_eflags
 
     @ other state
-    .global stored_unimplemented_opcode;
+    .global stored_unimplemented_opcode
 
     .align  15
 
 @ macros
-@ place (x86 registers, esp, eip) in store_(reg), switch to arm stack - uses scratch
+@ place (x86 registers, esp, eip) in store_(reg), stores cspr flags
+@ frees up at least registers r0-r7 as well as cspr
+@ switch to arm stack - uses scratch. note: does not write stored_eflags
+@ intention: switch to C-code, running code that uses a lot of registers
 .macro store_state
     @ store state
     ldr scratch, =stored_eip; str eip, [scratch]
@@ -398,12 +464,22 @@ def generateHeader():
     ldr scratch, =stored_ebp; str ebp, [scratch]
     ldr scratch, =stored_esp; str esp, [scratch]
     
+    mrs scratch, cpsr @ get status-register stored flag bits
+    ldr sp, =mem_cspr @ address where to store them
+    str scratch, [sp]
+    
     @ restore stack and return
-    ldr sp, =stack_pointer; ldr sp, [sp]
+    ldr sp, =mem_arm_sp; ldr sp, [sp]
 .endm
 
-@ load (x86 registers, esp, eip) from store_reg (implied: switch to x86 stack) - uses scratch
+@ undoes store_state
+@ load (x86 registers, esp, eip) from store_reg, load cspr flags
+@ implied: switch to x86 stack) - uses scratch
 .macro restore_state
+    ldr sp, =mem_cspr   @ address where status is stored
+    ldr scratch, [sp]
+    msr cpsr_f, scratch @ get status-register stored flag bits
+
     ldr scratch, =stored_eip; ldr eip, [scratch]
     ldr scratch, =stored_eax; ldr eax, [scratch]
     ldr scratch, =stored_ebx; ldr ebx, [scratch]
@@ -415,6 +491,36 @@ def generateHeader():
     ldr scratch, =stored_esp; ldr esp, [scratch]
 .endm
 
+// TODO macro store_flag_state? - restore_flag_state
+
+
+@ macro reads eflags from cspr, aux, result, memory
+@ and stores it in r0
+@ uses r0-r3
+.macro get_eflags
+    ldr  r3, =mem_eflags @ get memory-stored flags
+    ldr  r3, [r3]
+    
+    mrs  r0, cpsr       @ get status-register stored flags 
+    ubfx r1, r0, 30, 2  @ r1 holds 0b00NZ
+    ubfx r2, r0, 28, 1  @ r2 holds 0b000o 
+    ubfx r0, r0, 29, 1  @ r0 holds 0b000C
+   
+    orr  r0, r0, r2, lsl 11 @ r0 holds 0bo000 0000 000C
+    orr  r1, r3, r1, lsl 6  @ r1 holds mem_eflags | 0b NZ00 0000
+    
+    eor  r2, aux, result  @ r2 holds ...0b???A ????
+    and  r2, r2, 0x10  @ r2 holds 0b000A 0000 
+    
+    eor  r3, result, result, lsr 4 @ combine parity
+    eor  r3, r3, r3, lsl #2
+    eor  r3, r3, r3, lsr #1        @ r3 holds 0b?P??
+    and  r3, r3, 0x4
+    
+    orr  r3, r2  @ combine the various results
+    orr  r0, r1
+    orr  r0, r3  @ r0 holds eflags
+.endm
     """
 
 
@@ -422,17 +528,16 @@ def generateHeader():
 
 
 ####### ASSEMBLER FUNCTIONS #############################################
-#def addFunction(text="", rodata="" data=""):
-#
-
-def generateFemuFunction():
-    rodata(r"""
+function(
+    rodata = r"""
 msg:
     .ascii "starting emulation...\n"
-""")
-    data(r"""
-
-stack_pointer: .word 0
+""",
+    data = r"""
+@ emulator state
+mem_arm_sp: .word 0
+mem_eflags: .word 0x0202 @ the direction flag and reserved bit 1
+mem_cspr:   .word 0      @ to store/restore cspr flag registers
 
 @ register state
 stored_eip: .word 0
@@ -444,12 +549,13 @@ stored_esi: .word 0
 stored_edi: .word 0
 stored_ebp: .word 0
 stored_esp: .word 0
+stored_eflags: .word 0
+
 
 @other public values
 stored_unimplemented_opcode: .word 0
-    """)
-    
-    return format(r"""
+    """,
+    text = r"""
     # femuRun(void* pc, void* sp) -> result status
     .global femuRun
     .thumb_func
@@ -470,7 +576,7 @@ femuRun:
     pop {{r0}}
 
     @ store arm stack pointer
-    ldr  r2, =stack_pointer
+    ldr  r2, =mem_arm_sp
     str  sp, [r2]
     
     @ set up eip, x86 stack pointer (esp)
@@ -506,20 +612,24 @@ femuEnd:
     
     store_state
 
+    get_eflags
+    ldr r1, =stored_eflags
+    str r0, [r1] @ store flags
+    
     mov r0, word @ store return value in r0
 
     pop {{r4-r11}}
     pop {{pc}}
     """)
 
-def generateNotImplementedFunction():
-    rodata(r"""
+function(
+    rodata = r"""
 unimplemented_msg:
     .ascii "Unimplemented opcode: "
 newline:
     .ascii "\n"
-""")
-    return format("""
+""",
+    text = r"""
     .thumb_func
 notImplementedFunction:
     store_state
@@ -562,10 +672,9 @@ def generateSource(outputFile):
 
 
 {opcodeHandlers}
-{femuFunction}
-{notImplementedFunction}
 
 {text}
+
     .section .data
 {data}
 
@@ -576,8 +685,6 @@ def generateSource(outputFile):
 
 """.format(header = generateHeader(),
            opcodeHandlers = generateOpcodeHandlers(),
-           femuFunction = generateFemuFunction(),
-           notImplementedFunction = generateNotImplementedFunction(),
            text = "\n".join(_text),
            data = "\n".join(_data),
            rodata = "\n".join(_rodata))
