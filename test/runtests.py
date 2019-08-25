@@ -1,5 +1,6 @@
 import json
 import base64
+import re
 import gzip
 import glob
 import sys
@@ -9,6 +10,7 @@ from os import path
 import subprocess
 import collections
 import contextlib
+import argparse
 
 TEST_DIR = path.join('test')
 TEMP_DIR = TEST_DIR
@@ -106,7 +108,7 @@ def run_test(test, verbose=False):
         return True
 
 
-def run_test_for_file(file_name, verbose=False):
+def run_test_for_file(file_name, verbose=False, pattern=None):
     print(f"=== run tests from '{file_name}' ===")
     with open(file_name) as f:
         data = json.load(f)
@@ -114,6 +116,8 @@ def run_test_for_file(file_name, verbose=False):
     num_pass = 0
     num_fail = 0
     for test in tests:
+        if pattern is not None and not re.match(pattern, test['test_name']):
+            continue
         if verbose: print("test", test['test_name'])
         if run_test(test, verbose=verbose):
             if not verbose: print(".", end="", flush=True)
@@ -122,35 +126,43 @@ def run_test_for_file(file_name, verbose=False):
             num_fail += 1
         if verbose: print()
     if verbose:
-        print(f"ran {num_pass+num_fail} tests, {num_pass} passed, {num_fail} failured")
+        print(f"ran {num_pass+num_fail} tests, {num_pass} passed, {num_fail} failed")
     return (num_pass, num_fail)
 
 
-def run_tests(file_names, verbose=False):
+def run_tests(file_names, verbose=False, pattern=None):
     num_pass, num_fail = (0, 0)
     for file_name in file_names:
-        s,f = run_test_for_file(file_name, verbose=verbose)
+        s,f = run_test_for_file(file_name, verbose=verbose, pattern=pattern)
         num_pass += s
         num_fail += f
     print()
-    print(f"ran {num_pass+num_fail} tests, {num_pass} passed, {num_fail} failured")
+    print(f"ran {num_pass+num_fail} tests, {num_pass} passed, {num_fail} failed")
 
 
 
 ##### MAIN #########################################################################################
 def main(argv=[], verbose=False):
-    # remove -v/--verbose
-    if len(argv) > 0 and argv[0] in {'-v', '--verbose'}:
-        argv = argv[1:]
-        verbose = True
-    # collect filenames as necessary
-    if len(argv) == 0 or argv == ['all']:
+    parser = argparse.ArgumentParser(
+        description='Running Femu Unit Tests',
+    )
+    
+    parser.add_argument('-v', '--verbose', action="store_true", default=False)
+    parser.add_argument('-p', '--pattern', action="store", dest="pattern",
+                        help='only run tests whose name start with given regex pattern')
+    parser.add_argument(nargs="*", metavar='TESTFILE.json', dest='files',
+                        help='only run tests from given json filenames (otherwise run all)')
+    
+    args = parser.parse_args()
+    print(args)
+    if len(args.files) == 0 or args.files == ['all']:
         file_names = glob.glob(path.join(TESTS_FOLDER, '*.json'))
     else:
-        file_names = argv
+        file_names = args.files
+    
     #runtests
-    run_tests(file_names, verbose=verbose)
+    run_tests(file_names, verbose=verbose, pattern=args.pattern)
 
 if __name__ == "__main__":
-    main(sys.argv[1:], verbose=False)
+    main(sys.argv, verbose=False)
 
