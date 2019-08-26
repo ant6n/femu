@@ -99,20 +99,20 @@ elf::ElfFile injectElf(const elf::ElfFile& targetElf, const elf::ElfFile& inject
     int injectElfAlignment = 1;
     for (int i = 0; i < injectElf.numSegments(); i++) {
         auto segment = injectElf.getSegment(i);
-		// TODO - check if there's an overlap with segments in the given elf
-		if (segment.header().p_type == PT_LOAD and
-			segment.header().p_filesz > 0) {
-			// TODO check power of two
-			injectElfAlignment = std::max(injectElfAlignment,
-										  static_cast<int>(segment.header().p_align));
-		}
+        // TODO - check if there's an overlap with segments in the given elf
+        if (segment.header().p_type == PT_LOAD and
+            segment.header().p_filesz > 0) {
+            // TODO check power of two
+            injectElfAlignment = std::max(injectElfAlignment,
+                                          static_cast<int>(segment.header().p_align));
+        }
     }
 
     // collect offsets and sizes
     size_t injectElfOffset = align(targetElf.size(), injectElfAlignment);
     size_t newProgramHeaderOffset = align(injectElfOffset + injectElf.size(), alignof(Elf32_Phdr));
     size_t newProgramHeaderSize = targetElf.header().e_phentsize*(targetElf.numSegments() +
-																 injectElf.numSegments());
+                                                                 injectElf.numSegments());
     size_t newSize = newProgramHeaderOffset + newProgramHeaderSize;
     
     // create new data
@@ -134,22 +134,22 @@ elf::ElfFile injectElf(const elf::ElfFile& targetElf, const elf::ElfFile& inject
         //printf("add segment %d, offset: %d, \n", i, headerOffset);
         // copy program header entry
         auto segment = injectElf.getSegment(i);
-		memcpy(newData + headerOffset, &segment.header(), copyPHEntrySize);
-	
+        memcpy(newData + headerOffset, &segment.header(), copyPHEntrySize);
+    
         // fix program header entry
-		Elf32_Phdr* headerEntry = reinterpret_cast<Elf32_Phdr*>(newData + headerOffset);
-		headerEntry->p_offset += injectElfOffset;
-		if (headerEntry->p_type != PT_LOAD) {
-			headerEntry->p_type = PT_NULL;
-		}
-	
-		headerOffset += targetElf.header().e_phentsize;
+        Elf32_Phdr* headerEntry = reinterpret_cast<Elf32_Phdr*>(newData + headerOffset);
+        headerEntry->p_offset += injectElfOffset;
+        if (headerEntry->p_type != PT_LOAD) {
+            headerEntry->p_type = PT_NULL;
+        }
+    
+        headerOffset += targetElf.header().e_phentsize;
     }
         
     // create new elf and update/fix header
     std::shared_ptr<char> shared(newData);
     elf::ElfFile outElf(shared, newSize);
-	
+    
     outElf.header().e_phoff = newProgramHeaderOffset;
     outElf.header().e_phnum = targetElf.numSegments() + injectElf.numSegments();
 	

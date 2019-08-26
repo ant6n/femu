@@ -15,9 +15,11 @@ MAIN-SRCS := main.cpp elf-file.cpp
 all: femu femu-inject
 
 bin/elf-file.o: source/elf-file.cpp $(MAIN-INCLUDE)
+	@mkdir -p bin
 	$(CC-MAIN) $(MAIN-FLAGS) source/elf-file.cpp -o bin/elf-file.o
 
 bin/main.o: source/main.cpp $(MAIN-INCLUDE)
+	@mkdir -p bin
 	$(CC-MAIN) $(MAIN-FLAGS) source/main.cpp -o bin/main.o
 
 bin/emu-main.o: source/emu-main.c $(FEMU-INCLUDE)
@@ -30,6 +32,7 @@ gen/opcode-handlers.s gen/register-gdb-print gen/shared_constants.h: source/gene
 	python3 source/genemu.py
 
 bin/opcode-handlers.o: gen/opcode-handlers.s
+	@mkdir -p bin
 	$(CC-FEMU) $(FEMU-FLAGS) gen/opcode-handlers.s -o bin/opcode-handlers.o
 
 femu: bin/elf-file.o bin/main.o
@@ -46,3 +49,4 @@ clean:
 
 test: all
 	python3 test/runtests.py
+
