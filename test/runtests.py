@@ -17,7 +17,7 @@ TEMP_DIR = TEST_DIR
 ELF_FILE = path.join(TEMP_DIR, 'test-elf')
 JSON_FILE = path.join(TEMP_DIR, 'test-elf.json')
 FEMU_EXE = './femu'
-TESTS_FOLDER = path.join(TEST_DIR, 'x86-unit-tests')
+TESTS_FOLDER = path.join(TEST_DIR, 'x86-unit-tests', 'x86-tests')
 INJECT_ELF_FILE = path.join(TEST_DIR, 'test-emu-inject')
 
 def execute(cmd, verbose=False):

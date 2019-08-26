@@ -265,7 +265,7 @@ int parseArgs(int argc, char *const argv[], char* const envp[],
 
 
 int main(int argc, char *const argv[], char *const envp[]) {
-
+    
     // parse/set up options
     EmuOptions emuOptions = {0};
     std::string emulatedOutputFilename = "";
