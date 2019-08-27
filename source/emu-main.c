@@ -180,7 +180,9 @@ void outputJsonResult(int result_status) {
             fprints(fd, "\": \"");
             for (int i = 0; i < 8; i++) {
                 if (i != 0) fprints(fd, " ");
-                writeHexByte(fd, ((*p) >> (8*i)) & 0xFF);
+		if (i < 4) writeHexByte(fd, shiftRight(*p, 8*i) & 0xFF);
+		else       writeHexByte(fd, shiftRight((*p >> 32), 8*(i-4)) & 0xFF);
+		  
             }
             fprints(fd, "\"");
             delim = ",\n";

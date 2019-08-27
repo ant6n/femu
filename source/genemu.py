@@ -267,7 +267,6 @@ for op in byteOpcodes(0x9C): # pushfd
     """)
 
 function(text="""
-    # femuRun(void* pc, void* sp) -> result status
     .thumb_func
     .type pushfd_impl, %function
 pushfd_impl: @ pushfd
@@ -302,7 +301,6 @@ for op in byteOpcodes(0x9D): # popfd
 # Adjust    -     4 (aux)
 
 function(text="""
-    # femuRun(void* pc, void* sp) -> result status
     .global popfd_impl
     .thumb_func
     .type popfd_impl, %function
@@ -602,7 +600,10 @@ femuRun:
     mov  ebp, 0
     mov  esi, 0
     mov  edi, 0
-fb:    
+    
+    @ set up flags
+    msr cpsr_f, eax @ clear status flags
+fb:
     @ start emulation
     {branchNext}
     
