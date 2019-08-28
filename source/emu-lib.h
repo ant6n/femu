@@ -11,7 +11,7 @@
 static inline int shiftRight(unsigned int value, int shift) {
   int result;
   asm volatile("mov %[result], %[value], lsr %[shift]" :
-	       [result] "=r" (result) : [value] "r" (value), [shift] "r" (shift));
+               [result] "=r" (result) : [value] "r" (value), [shift] "r" (shift));
   return result;
 }
 

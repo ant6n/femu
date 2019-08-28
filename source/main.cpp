@@ -84,8 +84,8 @@ static elf::ElfFile createEmulatedElf(const std::string& x86ElfPath,
     
     // inject options, x85 into emulator
     if (not injectEmuOptions(emuElf, optionsCopy)) {
-		std::cerr << "failed to inject emulator into program" << std::endl;
-		exit(EXIT_FAILURE);
+        std::cerr << "failed to inject emulator into program" << std::endl;
+        exit(EXIT_FAILURE);
     }
     elf::ElfFile outputElf = injectElf(emuElf, x86ElfPath);
     
@@ -152,7 +152,7 @@ elf::ElfFile injectElf(const elf::ElfFile& targetElf, const elf::ElfFile& inject
     
     outElf.header().e_phoff = newProgramHeaderOffset;
     outElf.header().e_phnum = targetElf.numSegments() + injectElf.numSegments();
-	
+    
     //printf("output:\n");
     //outElf.printHeader();
     //outElf.printProgramHeaders();
@@ -166,23 +166,23 @@ bool injectEmuOptions(elf::ElfFile& emuElf, const EmuOptions& emuOptions) {
     uintptr_t MAGIC = EMU_OPTIONS_MAGIC;
     for (int i = 0; i < emuElf.numSegments(); i++) {
         auto segment = emuElf.getSegment(i);
-		if (segment.header().p_type == PT_LOAD and
-			segment.header().p_flags == (PF_R | PF_W)) {
-			//printf("searching for entry point in segment %d\n", i);
+        if (segment.header().p_type == PT_LOAD and
+            segment.header().p_flags == (PF_R | PF_W)) {
+            //printf("searching for entry point in segment %d\n", i);
             uintptr_t* pstart = (uintptr_t*)(emuElf.data() + segment.header().p_offset);
-			uintptr_t* pcurrent = pstart;
-			while (*pcurrent != MAGIC) {
-				if (pcurrent - pstart > segment.header().p_filesz) {
-					std::cerr << "entrypoint MAGIC not found in emu!" << std::endl;
-					return false;
-				}
-				pcurrent++;
-			}
-			printf("magic entrypoint found at offset: %d\n", pcurrent - pstart);
+            uintptr_t* pcurrent = pstart;
+            while (*pcurrent != MAGIC) {
+                if (pcurrent - pstart > segment.header().p_filesz) {
+                    std::cerr << "entrypoint MAGIC not found in emu!" << std::endl;
+                    return false;
+                }
+                pcurrent++;
+            }
+            printf("magic entrypoint found at offset: %d\n", pcurrent - pstart);
             std::cout << sizeof(EmuOptions);
             memcpy(pcurrent, &emuOptions, sizeof(EmuOptions));
-			return true;
-		}
+            return true;
+        }
     }
     return false;
 }
@@ -213,9 +213,16 @@ int parseArgs(int argc, char *const argv[], char* const envp[],
             exit(1);
 
         case 'h':
-            puts ("here's some help!!!\n");
-            break;
-        
+            printf("femu x86 emulator\n"
+                   "Usage: femu [femu-OPTIONS]... x86-elf-file [x86-args]...\n"
+                   "\n"
+                   "  -v, --verbose                   prints more output\n"
+                   "  -h, --help                      prints this help\n"
+                   "  -t, --test JSON-FILE            unit-testing mode: output state at int3 into JSON\n"
+                   "  -m, --test-memory 0xSTART,0xEND in unit-testing mode, output given memory-range\n"
+                   "  -e, --emu-file [FILE]           "
+                   "write-out internal x86 elf with emulator injected, to be used for testing\n");
+            exit(0);
         case 'v':
             emuOptions.verbose = 1;
             break;

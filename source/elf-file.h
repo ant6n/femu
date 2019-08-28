@@ -28,7 +28,7 @@ namespace elf {
         bool execute(char *const argv[], char *const envp[]);
         
         void addSegment();
-		
+        
         Elf32_Ehdr& header();
         const Elf32_Ehdr& header() const;
         

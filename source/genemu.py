@@ -172,7 +172,7 @@ eregs = [eax, ecx, edx, ebx, esp, ebp, esi, edi] # index -> ereg
 
 macro('nextHandler1_0Byte', "uxth nextHandler, word") # extract lower bytes
 macro('nextHandler1_1Byte', "ubfx nextHandler, word, 8, 16") # extract middle bytes
-macro('nextHandler1_2Byte', "ubfx nextHandler, word, 16,16") # extract upper bytes
+macro('nextHandler1_2Byte', "lsr  nextHandler, word, #16") # extract upper bytes
 macro('nextHandler2',       "orr  nextHandler, handlerBase, nextHandler, lsl {handlerShift}") 
 
 macro('nextWord_1Byte', "ldr  word, [eip, 1]!")
