@@ -1,6 +1,10 @@
-
-CC-FEMU := gcc
 CC-MAIN := g++
+# if we are on aarch64, use armhf cross-compiler
+ifeq ($(shell uname -m),aarch64)
+	CC-FEMU := arm-linux-gnueabihf-gcc
+else
+	CC-FEMU := gcc
+endif
 
 FEMU-INCLUDE := source/*.h gen/shared_constants.h
 MAIN-INCLUDE := source/*.h
