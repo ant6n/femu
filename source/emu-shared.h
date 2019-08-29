@@ -14,11 +14,11 @@ extern "C" {
 
     typedef struct {
         uint32_t MAGIC; // used to find the options struct inside the emu elf
-        uintptr_t entryPoint;
+        uint32_t entryPoint;
         int8_t verbose;
         char testJsonOut[EMU_OPTIONS_MAX_FILENAME_LENGTH]; // if defined, use test mode: output state on int3
-        uintptr_t testMemStart; // memory to output when using testJsonOut
-        uintptr_t testMemEnd;
+        uint32_t testMemStart; // memory to output when using testJsonOut
+        uint32_t testMemEnd;
     } EmuOptions;
 
 

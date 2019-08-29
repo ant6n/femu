@@ -163,14 +163,14 @@ elf::ElfFile injectElf(const elf::ElfFile& targetElf, const elf::ElfFile& inject
 /** inject emulator data from target into the emulator elf */
 bool injectEmuOptions(elf::ElfFile& emuElf, const EmuOptions& emuOptions) {
     // find R/W load segment with the magic number
-    uintptr_t MAGIC = EMU_OPTIONS_MAGIC;
+    uint32_t MAGIC = EMU_OPTIONS_MAGIC;
     for (int i = 0; i < emuElf.numSegments(); i++) {
         auto segment = emuElf.getSegment(i);
         if (segment.header().p_type == PT_LOAD and
             segment.header().p_flags == (PF_R | PF_W)) {
             //printf("searching for entry point in segment %d\n", i);
-            uintptr_t* pstart = (uintptr_t*)(emuElf.data() + segment.header().p_offset);
-            uintptr_t* pcurrent = pstart;
+            uint32_t* pstart = (uint32_t*)(emuElf.data() + segment.header().p_offset);
+            uint32_t* pcurrent = pstart;
             while (*pcurrent != MAGIC) {
                 if (pcurrent - pstart > segment.header().p_filesz) {
                     std::cerr << "entrypoint MAGIC not found in emu!" << std::endl;
