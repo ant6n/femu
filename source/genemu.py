@@ -195,15 +195,30 @@ for opcode in range(2**16):
     """, opcode=opcode)
 
 for op in byteOpcodesWithRegister(0x58): # pop reg
-    if op.r == 4: continue # esp
+    instr = ('pop {{ scratch }}\n    mov esp, scratch'
+             if op.r == 4 else # esp
+             'pop  {{ {reg} }}')
     op.define("""@ pop reg {reg}
     {nextHandler1_1Byte}
     {nextHandler2}
     {nextWord_1Byte}
-    pop  {{ {reg} }}
+    """+instr+"""
     {branchNext}
     """, reg=eregs[op.r])
 
+for op in byteOpcodesWithRegister(0x50): # push reg
+    instr = ('mov scratch, esp\n    push {{ scratch }}'
+             if op.r == 4 else # esp
+             'push  {{ {reg} }}')
+    op.define("""@ push reg {reg}
+    {nextHandler1_1Byte}
+    {nextHandler2}
+    {nextWord_1Byte}
+    """+instr+"""
+    {branchNext}
+    """, reg=eregs[op.r])
+
+    
 for op in byteOpcodes(0x68): # push imm32
     op.define("""@ push imm32
     {nextWord_5Byte}
@@ -225,7 +240,7 @@ for op in byteOpcodesWithRegister(0xB8): # mov reg, imm32
     """, reg=eregs[op.r])
 
 for op in byteOpcodes(0xA3): # mov ax, [imm32]
-    op.define("""@ mov ax, [imm32]
+    op.define("""@ mov eax, [imm32]
     {nextWord_5Byte}
     ldr  scratch, [eip, -4]
     {nextHandler1_0Byte}
@@ -234,6 +249,15 @@ for op in byteOpcodes(0xA3): # mov ax, [imm32]
     {branchNext}
     """, reg=eregs[op.r])
 
+for op in byteOpcodes(0xA1): # mov [imm32], ax
+    op.define("""@ mov [imm32], eax
+    {nextWord_5Byte}
+    ldr  scratch, [eip, -4]
+    {nextHandler1_0Byte}
+    {nextHandler2}
+    ldr eax, [scratch]
+    {branchNext}
+    """, reg=eregs[op.r])
     
 for op in byteOpcodes(0x90): # nop
     op.define("""@ nop
@@ -489,7 +513,7 @@ def generateHeader():
     ldr scratch, =stored_esp; ldr esp, [scratch]
 .endm
 
-// TODO macro store_flag_state? - restore_flag_state
+@ TODO macro store_flag_state? - restore_flag_state
 
 
 @ macro reads eflags from cspr, aux, result, memory
