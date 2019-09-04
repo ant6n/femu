@@ -8,7 +8,6 @@ import os
 import stat
 from os import path
 import subprocess
-import collections
 import contextlib
 import argparse
 
@@ -20,16 +19,6 @@ FEMU_EXE = './femu'
 TESTS_FOLDER = path.join(TEST_DIR, 'x86-unit-tests', 'x86-tests')
 INJECT_ELF_FILE = path.join(TEST_DIR, 'test-emu-inject')
 
-def execute(cmd, verbose=False):
-    if verbose: print('run:', cmd)
-    result = subprocess.run(cmd, shell=True, capture_output=True)
-    try:
-        result.check_returncode()
-    except subprocess.CalledProcessError as e:
-        print(result.stdout)
-        print(result.stderr)
-        raise e
-    return result
 
 
 # given two dictionaries, returns a new dictionary (key, a-value, b-value)
@@ -44,9 +33,31 @@ def dict_diff(a, b, default=None):
     return result
 
 
-def run_test(test, verbose=False, create_extra_files=False):
+def execute_test(elf_file, mem_range, args):
+    # execute and load result
+    if args.create_extra_files:
+        # TODO improve code...
+        e = (' -e '+INJECT_ELF_FILE)
+    cmd = f'{FEMU_EXE} -t {JSON_FILE} -m {mem_range} {elf_file}'
+    if args.verbose: print(cmd)
+    exec_result = subprocess.run(cmd, shell=True, capture_output=True)
+    try:
+        exec_result.check_returncode()
+    except subprocess.CalledProcessError as e:
+        if args.verbose: print(exec_result.stdout.decode('utf-8'))
+        result = {
+            'result_status_test_failed': True,
+            'result_status': 'exit:' + exec_result.stderr.decode('utf-8'),
+        }
+    else:
+        with open(JSON_FILE) as f:
+            result = json.load(f)
+    #print(exec_result.stdout.decode('utf-8'))
+    return result
+
+def run_test(test, args):
     failed_message= f"FAIL: '{test['test_name']}', testing '{test['test_code']}'"
-    if not verbose: failed_message = "\n" + failed_message
+    if not args.verbose: failed_message = "\n" + failed_message
     
     # write binary
     elf_binary = gzip.decompress(base64.b64decode(test['elf_gzip_base64']))
@@ -59,19 +70,15 @@ def run_test(test, verbose=False, create_extra_files=False):
     with contextlib.suppress(FileNotFoundError):
         os.remove(JSON_FILE)
     
-    # execute and load result
-    e = f' -e {INJECT_ELF_FILE}' if create_extra_files else ''
-    exec_result = execute(f'{FEMU_EXE} -t {JSON_FILE} -m {mem_range}{e} {ELF_FILE}', verbose=verbose)
-    with open(JSON_FILE) as f:
-        result = json.load(f)
-    # ?print(exec_result.stdout.decode('utf-8'))
-
-    # check failed status  of result
+    result = execute_test(ELF_FILE, mem_range, args)
+    #? print(result)
+    
+    # check failed status of result
     if result['result_status_test_failed']:
         print(failed_message)
         suffix = ''
         if result['result_status'] == 'EXIT_UNIMPLEMENTED_OPCODE':
-            suffix = f" with opcode: '{result['unimplemented_opcode']}'"
+            suffix = f" with opcode: {result['unimplemented_opcode']}'"
         print(f"  failed with status {result['result_status']}" + suffix)
         return False
     
@@ -105,11 +112,11 @@ def run_test(test, verbose=False, create_extra_files=False):
         
         return False
     else:
-        if verbose: print("PASS")
+        if args.verbose: print("PASS")
         return True
 
 
-def run_test_for_file(file_name, verbose=False, pattern=None, create_extra_files=False):
+def run_test_for_file(file_name, args):
     print(f"=== run tests from '{file_name}' ===")
     with open(file_name) as f:
         data = json.load(f)
@@ -117,27 +124,35 @@ def run_test_for_file(file_name, verbose=False, pattern=None, create_extra_files
     num_pass = 0
     num_fail = 0
     for test in tests:
-        if pattern is not None and not re.match(pattern, test['test_name']):
+        if args.pattern is not None and not re.match(args.pattern, test['test_name']):
             continue
-        if verbose: print("test", test['test_name'])
-        if run_test(test, verbose=verbose, create_extra_files=create_extra_files):
-            if not verbose: print(".", end="", flush=True)
+        if args.verbose: print("test", test['test_name'])
+        if run_test(test, args):
+            if not args.verbose: print(".", end="", flush=True)
             num_pass += 1
         else:
             num_fail += 1
-        if verbose: print()
-    if verbose:
+        if args.verbose: print()
+        if num_fail > 0 and args.fail_fast: break
+    if args.verbose:
         print(f"ran {num_pass+num_fail} tests, {num_pass} passed, {num_fail} failed")
     return (num_pass, num_fail)
 
 
-def run_tests(file_names, verbose=False, pattern=None, create_extra_files=False):
+def run_tests(args):
+    # find files to run tests on
+    if len(args.files) == 0 or args.files == ['all']:
+        file_names = glob.glob(path.join(TESTS_FOLDER, '*.json'))
+    else:
+        file_names = args.files
+
+    # run tests
     num_pass, num_fail = (0, 0)
     for file_name in file_names:
-        s,f = run_test_for_file(file_name, verbose=verbose, pattern=pattern,
-                                create_extra_files=create_extra_files)
+        s,f = run_test_for_file(file_name, args)
         num_pass += s
         num_fail += f
+        if num_fail > 0 and args.fail_fast: break
     print()
     print(f"ran {num_pass+num_fail} tests, {num_pass} passed, {num_fail} failed")
 
@@ -153,20 +168,14 @@ def main(argv=[]):
     parser.add_argument('-e', '--create-extra-files', action="store_true", default=False)
     parser.add_argument('-p', '--pattern', action="store", dest="pattern",
                         help='only run tests whose name start with given regex pattern')
+    parser.add_argument('-f', '--fail-fast', action="store_true", help='stop/exit on first failing test.')
     parser.add_argument(nargs="*", metavar='TESTFILE.json', dest='files',
                         help='only run tests from given json filenames (otherwise run all)')
     
     args = parser.parse_args()
     #print(args)
     
-    if len(args.files) == 0 or args.files == ['all']:
-        file_names = glob.glob(path.join(TESTS_FOLDER, '*.json'))
-    else:
-        file_names = args.files
-    
-    #runtests
-    run_tests(file_names, verbose=args.verbose, pattern=args.pattern,
-              create_extra_files=args.create_extra_files)
+    run_tests(args)
 
 if __name__ == "__main__":
     main(sys.argv)
