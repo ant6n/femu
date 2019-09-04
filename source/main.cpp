@@ -59,7 +59,7 @@ std::pair<uintptr_t, uintptr_t> getReadWriteMemory(const elf::ElfFile& elf) {
 
 /** create emulator for the spcified elf defined by the target path, by injecting it into the emu */
 static elf::ElfFile createEmulatedElf(const std::string& x86ElfPath,
-                                      const EmuOptions& options) { //, const std::string& outputPath) {
+                                      const EmuOptions& options) {
     elf::ElfFile x86Elf(x86ElfPath);
     elf::ElfFile emuElf(emulatorElfPath);
 
@@ -187,19 +187,26 @@ bool injectEmuOptions(elf::ElfFile& emuElf, const EmuOptions& emuOptions) {
     return false;
 }
 
+typedef struct {
+    std::string injectedElfOutputFilename;
+    bool writeInjectedElf;
+    bool writeInjectedElfAndQuit;
+} MainOptions;
+
 
 /** parses options and returns the options in the reference args,
     as well as the number of consumed argv args */
 int parseArgs(int argc, char *const argv[], char* const envp[],
-              EmuOptions& emuOptions, std::string& emulatedOutputFilename) {
+              EmuOptions& emuOptions, MainOptions& mainOptions) {
     // parse options
     const char* short_options = "vht:m:e:";
     static struct option long_options[] = {
-        {"verbose",    no_argument,       0, 'v'},
-        {"help",       no_argument,       0, 'h'},
-        {"test",       required_argument, 0, 't'},
-        {"test-memory",required_argument, 0, 'm'},
-        {"emu-file",   required_argument, 0, 'e'},
+        {"verbose",           no_argument,       0, 'v'},
+        {"help",              no_argument,       0, 'h'},
+        {"test",              required_argument, 0, 't'},
+        {"test-memory",       required_argument, 0, 'm'},
+        {"write-emu-elf",     required_argument, 0, 'e'},
+        {"write-emu-elf-only",required_argument, 0, 'e'},
         {0, 0, 0, 0}
     };
     while (1) {
@@ -216,19 +223,27 @@ int parseArgs(int argc, char *const argv[], char* const envp[],
             printf("femu x86 emulator\n"
                    "Usage: femu [femu-OPTIONS]... x86-elf-file [x86-args]...\n"
                    "\n"
-                   "  -v, --verbose                   prints more output\n"
-                   "  -h, --help                      prints this help\n"
+                   "  -v, --verbose                   print more output\n"
+                   "  -h, --help                      print this help\n"
                    "  -t, --test JSON-FILE            unit-testing mode: output state at int3 into JSON\n"
-                   "  -m, --test-memory 0xSTART,0xEND in unit-testing mode, output given memory-range\n"
-                   "  -e, --emu-file [FILE]           "
-                   "write-out internal x86 elf with emulator injected, to be used for testing\n");
+                   "  -m, --test-memory 0xSTART,0xEND in unit-testing mode, output given memory-range into JSON\n"
+                   "  -e, --write-emu-elf [FILE]      "
+                   "write-out internal x86 elf with emu injected, for debugging\n"
+                   "  -E, --write-emu-elf-only [FILE] "
+                   "write-out internal x86 elf with emu injected, for debugging, and quit\n");
             exit(0);
         case 'v':
             emuOptions.verbose = 1;
             break;
 
         case 'e':
-            emulatedOutputFilename = optarg;
+            mainOptions.injectedElfOutputFilename = optarg;
+            mainOptions.writeInjectedElf = true;
+            break;
+        
+        case 'E':
+            mainOptions.injectedElfOutputFilename = optarg;
+            mainOptions.writeInjectedElfAndQuit = true;
             break;
         
         case 't': {
@@ -274,9 +289,10 @@ int parseArgs(int argc, char *const argv[], char* const envp[],
 int main(int argc, char *const argv[], char *const envp[]) {
     
     // parse/set up options
-    EmuOptions emuOptions = {0};
+    EmuOptions emuOptions{};
+    MainOptions mainOptions{};
     std::string emulatedOutputFilename = "";
-    int numParsedArgs = parseArgs(argc, argv, envp, emuOptions, emulatedOutputFilename);    
+    int numParsedArgs = parseArgs(argc, argv, envp, emuOptions, mainOptions);
     auto new_argv = &(argv[numParsedArgs]);
     int new_argc = argc - numParsedArgs;
     std::string path = new_argv[0];
@@ -284,10 +300,13 @@ int main(int argc, char *const argv[], char *const envp[]) {
     // create combined elf
     elf::ElfFile emulatedElf = createEmulatedElf(path, emuOptions);
     
-    // output elf if necessary
-    if (emulatedOutputFilename.length() > 0) {
+    // output elf if necessary (and quit)
+    if (mainOptions.writeInjectedElf || mainOptions.writeInjectedElfAndQuit) {
         std::cout << "write emulated elf to " << emulatedOutputFilename << std::endl;
         emulatedElf.writeToFile(emulatedOutputFilename);
+        if (mainOptions.writeInjectedElfAndQuit) {
+            exit(1);
+        }
     }
     
     // run
