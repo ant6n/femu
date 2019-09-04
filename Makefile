@@ -33,7 +33,7 @@ bin/emu-lib.o: source/emu-lib.c $(FEMU-INCLUDE)
 	$(CC-FEMU) $(FEMU-FLAGS) source/emu-lib.c -o bin/emu-lib.o
 
 gen/opcode-handlers.s gen/register-gdb-print gen/shared_constants.h: source/genemu.py
-	python3 source/genemu.py
+	python3.7 source/genemu.py
 
 bin/opcode-handlers.o: gen/opcode-handlers.s
 	@mkdir -p bin
