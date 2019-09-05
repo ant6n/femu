@@ -756,6 +756,7 @@ echo __ define print reg function ____\n
 
 define reg
     {printStatements}
+    refresh
 end
 
 define sr

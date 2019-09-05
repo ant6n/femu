@@ -1,4 +1,14 @@
 #!/bin/bash
 echo debug $1
-gdb -x gen/register-gdb-print -tui -ex "set breakpoint pending on" -ex 'b fb' -ex 'run' --args ./femu $1
+echo "==== DISSASSEMBLY ===="
+objdump -M intel-mnemonic -d $1 | sed '/^$/d'
+echo
+echo "==== INJECT EMU ======"
+./femu -E test/debug-inject-elf $1
+echo "== DEBUG INJECTED ===="
+
+read -p "Press enter to continue"
+gdb -x gen/register-gdb-print \
+    -ex "set breakpoint pending on" -ex 'b fb' -ex 'run' -ex 'layout asm' -ex 'reg'\
+    --args test/debug-inject-elf
 

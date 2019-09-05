@@ -199,14 +199,14 @@ typedef struct {
 int parseArgs(int argc, char *const argv[], char* const envp[],
               EmuOptions& emuOptions, MainOptions& mainOptions) {
     // parse options
-    const char* short_options = "vht:m:e:";
+    const char* short_options = "vht:m:e:E:";
     static struct option long_options[] = {
         {"verbose",           no_argument,       0, 'v'},
         {"help",              no_argument,       0, 'h'},
         {"test",              required_argument, 0, 't'},
         {"test-memory",       required_argument, 0, 'm'},
         {"write-emu-elf",     required_argument, 0, 'e'},
-        {"write-emu-elf-only",required_argument, 0, 'e'},
+        {"write-emu-elf-only",required_argument, 0, 'E'},
         {0, 0, 0, 0}
     };
     while (1) {
@@ -291,7 +291,6 @@ int main(int argc, char *const argv[], char *const envp[]) {
     // parse/set up options
     EmuOptions emuOptions{};
     MainOptions mainOptions{};
-    std::string emulatedOutputFilename = "";
     int numParsedArgs = parseArgs(argc, argv, envp, emuOptions, mainOptions);
     auto new_argv = &(argv[numParsedArgs]);
     int new_argc = argc - numParsedArgs;
@@ -302,8 +301,8 @@ int main(int argc, char *const argv[], char *const envp[]) {
     
     // output elf if necessary (and quit)
     if (mainOptions.writeInjectedElf || mainOptions.writeInjectedElfAndQuit) {
-        std::cout << "write emulated elf to " << emulatedOutputFilename << std::endl;
-        emulatedElf.writeToFile(emulatedOutputFilename);
+        std::cout << "write emulated elf to " << mainOptions.injectedElfOutputFilename << std::endl;
+        emulatedElf.writeToFile(mainOptions.injectedElfOutputFilename);
         if (mainOptions.writeInjectedElfAndQuit) {
             exit(1);
         }
