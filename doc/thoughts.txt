@@ -1,0 +1,223 @@
+TODO
+- stack:
+   + set up emulator stack in BSS/data sections
+   + emulator uses that stack -- stack pointer is stored in mem
+   + use startup stack pointer for code
++ set up storing of state to move between emulation and other
+   + registers
+   + stack pointer
++ set up int3 handler
++ set up getopt for outputting the test json
++ read bss data segments from elf if no start/end memory supplied (just use first rw segment?)
++ set up getopt for memory area to output
++ get unimplemented opcode
++ flags
+
+- set up tests for modrm (reg, mem, sib), possibly with streams of instructions
+- set up tests for jump and conditional jumps
+- split up genemu better
+  - interpreter-architecture-independent gen definitions
+  - architecture-dependent set up
+  - architecture-independent helpers
+- implement some instructions
+- set up performance tests
+
+- do some tests to find out which structure is best
+   - aux/res stored in mem vs registers
+   - completely lazy storage with stm (r1, r2, pc)
+
+
+- ensure proper spacing (implied by succesful tests for now)
+
+
+
+
+- genemu - set up API to make it simpler to generate the asm equivalences, e.g.
+     gen_1byte_reg(OPCODE, "push {reg}")
+     gen_1byte    (OPCODE, "")
+     gen_4byte_reg_imm32()()
+  or
+     gen('CC+r',     ["push {r}"])
+     gen('AF r/m',   ["add {r}, {rm}", "sbb {r}, {rm}"])
+     gen('90',       []) # nop
+     gen('A3 i32',   ["ldr scratch, [scratch]", "mov eax, scratch"]
+
+
+     gen('CC+r',     "push {r}")
+     gen('AF /r',    "add {r}, {rm}; sbb {r}, {rm}")
+     gen('AF /m',    "add {r}, {rm}; sbb {r}, {rm}")
+     gen('90',       "") # nop
+     gen('A3 i32',   "ldr scratch, [scratch];"
+                     "mov eax, scratch")
+     gen('AF /0',    ...) - implies rm
+     gen('AF /0m',   ...)
+     gen('AF /0r',   ..)
+     
+     gen('LEA /m',  'mov {r}, {m_address}')
+     gen('addr /mr','add {mr}, {r}', output='mr')
+     gen('addb /mr', r=('add result, {r}, {rm};'
+                        'eor aux, {r}, {rm};'
+                        'lsl scratch, {r}, 24;'
+                        'adds scratch, scratch, {rm}, lsl 24;'
+                        'bfi {r}, {result}, 0, 8;')
+                     m=('add result, {r}, {rm};'
+                        'eor aux, {r}, {rm};'
+                        'lsl scratch, {r}, 24;'
+                        'adds scratch, scratch, {rm}, lsl 24;'
+                        'stb {result}, [m_address], 0, 8;') # op_size=byte
+
+     gen_conditional_jump('73 rel8', condition='E')
+     
+
+
+  - what if there's an immediate and a memory? - can't both be in scratch
+    - if there is a memory and an immediate, flags are usually overwritten,
+      so we can use aux/result for the second operand
+  - but we need to keep the m_address when the target is memory
+      add [eax], #1 - (prob not atomic)
+  - idea:
+      - store result, aux in memory -> they become sratch1, scratch2
+      - use a data_base, use stm to store both
+          -> one extra instruction for all A/P flag updaters, but 1 extra sctatch, 1 data-base reg
+  - another idea:
+      - nexthandler can be scratch 2, also assign directly to pc in the ORR
+        (time this!)
+
+  - what if there's different code for reg and memory? - need ldr/str
+     gen('AF /rm')
+     gen('AF /rm', r='....',
+                   m='....',
+                   sib='....')
+  - gen('9C', extern = ".....", sratch_regs="r0,r1,r2") # pushfd
+
+- double-instruction handlers:
+    - "Byte + Byte"
+    - "Byte + (Byte i8/i32)"
+    - if second operation updates flags, don't write flags of first
+
+
+- intersperse handlers which require more memory, e.g. byte/memory ops
+- put SIB handler in a dummy 1-byte handler like pushfd/popfd
+    something like:  BASE + ((XX 9C) << handlershift) + 04
+- need to find out how many bytes per handler
+- non-unique handlers can be combined
+- suffixes of handlers can be combined (but messes with branch target prediction)
+
+byte
+byter
+modrm
+modop-i32
+
+
+- for two-byte opcode handlers (0Fxx), these instructions with mod/rm or modop exist
+  - conditional move (r<-r/m)
+  - conditional set-byte to 0/1
+  - various bit instructions, bit test, bit swap, 
+  - intable NOPs
+  - various sse instructions
+  - instructions for later x86 models
+- implement this using special handlers
+  - move+next-handler - performs a move (r<-r/m) then calls next handler -- used by cmov
+  - move-from-scratch+next-handler - performs a move (r/m<-scratch) then calls next handler - use by cset
+  - interpret-modrm&return-handler - stores regs in mem, returns (r, rm) as address, returns back
+       - stores all 8 base regs, then returns pointers to either memory or stored regs
+  - interpret-modrm-with-xmm&return-handler - same as above, but uses xmm regs instead of base regs
+- we also need sib handlers
+  - basic-sib-handler: build address and return back to handler
+  - store-and-next-sib-handler: mov scratch -> [sib], call next
+- we can store these handlers interspersed with the n
+     
+
+
+Different emulators
+
+
+          flags in     | regs in | no switch | no opcode | pipelined | merged single
+          flags        | regs    |           | LUT       | load      | byte ops
+          (inline asm) | (asm)   | (asm)     | (asm)     | (asm)     |
+level 0     -          |  -      |   -       |   -       |   -       |
+level 1     -          |  -      |   -       |   -       |   -       |
+level 2     -          |  -      |   -       |   -       |   -       |
+level 3     -          |  -      |   -       |   -       |   -       |
+level 4     -          |  -      |   -       |   -       |   -       |
+
+
+need some performanc tests
+- various instructions
+- various complexities (helping/attacking the branch target buffer)
+
+
+
+ 
+ARM conditionals:                                | X86 conditionals:
+0000 | EQ | Equal                 | Z==1         | JE   | ZF==1
+0001 | NE | Not equal             | Z==0         | JNE  | ZF==0
+0010 | CS | a Carry set           | C==1         | JC   | CF==1
+0011 | CC | b Carry clear         | C==0         | JNC  | CF==0
+0100 | MI | Minus/negative        | N==1         | JS   | SF==1
+0101 | PL | Plus/positive or zero | N==0         | JNS  | SF==0
+0110 | VS | Overflow              | V==1         | JO   | OF==1
+0111 | VC | No overflow           | V==0         | JNO  | OF==0
+1000 | HI | Unsigned higher       | C==1 && Z==0 | 
+1001 | LS | Unsigned lower or same| C==0 || Z==1 |
+1010 | GE | Sgnd greatr than or eq| N==V         | JGE  | SF==OF
+1011 | LT | Signed less than      | N!=V         | JL   | SF!=OF
+1100 | GT | Signed greater than   | Z==0 && N==V | JG   | ZF==0 && SF==OF
+1101 | LE | Signed less than or eq| Z==1 || N!=V | JLE  | ZF==1 || SF!=OF
+                                                 | JBE  | CF==1 || ZF==1
+                                                 | JA   | CF==0 && ZF==0
+                                                 | JP   | PF==1
+                                                 | JNP  | PF==0
+
+
+
+
+
+
+JO   | overflow                OF = 1
+     | 
+JNO  | not overflow            OF = 0
+     | 
+JS   | sign                    SF = 1
+     | 
+JNS  | not sign                SF = 0
+     | 
+JE   | equal                   ZF = 1
+JZ   | zero                    
+     | 
+JNE  | not equal               ZF = 0
+JNZ  | not zero   
+     | 
+JB   | below               U   CF = 1
+JNAE | not above or equal 
+JC   | carry   
+     | 
+JNB  | not below           U   CF = 0
+JAE  | above or equal 
+JNC  | not carry       
+     | 
+     | 
+JBE  | below or equal      U   CF = 1 or ZF = 1
+JNA  | not above       
+     | 
+JA   | above               U   CF = 0 and ZF = 0
+JNBE | not below or equal   
+     | 
+JL   | less                S   SF <> OF
+JNGE | not greater or equal    
+     | 
+JGE  | greater or equal    S   SF = OF 7D
+JNL  | not less        
+     | 
+JLE  | less or equal       S  ZF = 1 or SF <> OF
+JNG  | not greater     
+     | 
+JG   | greater             S  ZF = 0 and SF = OF
+JNLE | not less or equal    
+     | 
+JP   | parity                 PF = 1  7A
+JPE  | parity even          
+     | 
+JNP  | not parity             PF = 0  7B
+JPO  | parity odd            
+
