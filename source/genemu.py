@@ -300,13 +300,13 @@ pushfd_impl: @ pushfd
     
     ldr  scratch, =mem_arm_sp @ load arm stack at scratch
     ldr  scratch, [scratch]
-    stmfd scratch!, {{r0-r3}} @ push registers (store multiple - full descending)
+    stmfd scratch!, {{r0-r2}} @ push registers (store multiple - full descending)
     
     get_eflags
     
     push {{ r0 }}
     
-    ldmfd scratch, {{r0-r3}} @ restore regs
+    ldmfd scratch, {{r0-r2}} @ restore regs
     {branchNext}
 """)
 
@@ -352,7 +352,7 @@ popfd_impl: @ popfd
     
     @ NZCo flags -> CSPR        
     ubfx r2, r0,11, 1       @ r2 holds 0b000o
-    ubfx r1, r0, 6, 2       @ r1 holds 0b00NZ    
+    ubfx r1, r0, 6, 2       @ r1 holds 0b00NZ 
     bfi  r2, r0, 1, 1       @ r2 holds 0b00Co
     lsl  r1, r1, 30         @ r1 is    0bNZ00...
     orr  r1, r1, r2, lsl 28 @ r1 is    0bNZCo0...
@@ -362,40 +362,6 @@ popfd_impl: @ popfd
     {branchNext}
 
 """)
-#
-#for op in byteOpcodes(0x9D): # popfd
-#    op.define("""@ popfd
-#    {nextHandler1_1Byte}
-#    {nextHandler2}
-#    {nextWord_1Byte}
-#    mov r0, r0
-#    mov r0, r0
-#    mov r0, r0
-#    mov r0, r0
-#    mov r0, r0
-#    mov r0, r0
-#    mov r0, r0
-#    mov r0, r0
-#    mov r0, r0
-#    {branchNext}
-#    """)
-#
-#    
-#    
-#
-# should we pack aux and result together? - we only need the lowest bytes...
-#
-# arm->x86
-# SZCO
-#
-#   read move the bit
-# parity:
-#
-#
-#
-#
-#
-#
 
     
 Opcode(0xcd80).define( # int 0x80
@@ -518,33 +484,41 @@ def generateHeader():
 
 @ macro reads eflags from cspr, aux, result, memory
 @ and stores it in r0
-@ uses r0-r3
+@ uses r0-r2
 .macro get_eflags
-    ldr  r3, =mem_eflags @ get memory-stored flags
-    ldr  r3, [r3]
+    @ interleave the following:
+    @ r0: get memory-stored flags
+    @ r1: get aux flag
+    @ r2: get p flag
+    eor  r2, result, result, lsr #4
+    ldr  r0, =mem_eflags
+    eor  r1, aux, result @ r1 holds ...0b???A ????
+    eor  r2, r2, r2, lsl #2
+    ldr  r0, [r0]
+    and  r1, r1, 0x10    @ r1 holds 0b000A 0000
+    eor  r2, r2, r2, lsr #1       @ r2 holds 0b?P??
     
-    mrs  r0, cpsr       @ get status-register stored flags 
-    ubfx r1, r0, 30, 2  @ r1 holds 0b00NZ
-    ubfx r2, r0, 28, 1  @ r2 holds 0b000o 
-    ubfx r0, r0, 29, 1  @ r0 holds 0b000C
-   
-    orr  r0, r0, r2, lsl 11 @ r0 holds 0bo000 0000 000C
-    orr  r1, r3, r1, lsl 6  @ r1 holds mem_eflags | 0b NZ00 0000
+    @ add status-register stored flags
+    addMI r0, 1<<7    @ minus - get sign flag
+    addEQ r1, 1<<6    @ equal - get zero flag
+    and   r2, r2, 0x4 @ -interleaved from before: r2 holds 0b0P00
+    addCS r0, 1<<0    @ carry set - get carry flag
+    addVS r1, 1<<11   @ v set - get overflow flag
     
-    eor  r2, aux, result  @ r2 holds ...0b???A ????
-    and  r2, r2, 0x10  @ r2 holds 0b000A 0000 
-    
-    eor  r3, result, result, lsr 4 @ combine parity
-    eor  r3, r3, r3, lsl #2
-    eor  r3, r3, r3, lsr #1        @ r3 holds 0b?P??
-    and  r3, r3, 0x4
-    
-    orr  r3, r2  @ combine the various results
-    orr  r0, r1
-    orr  r0, r3  @ r0 holds eflags
+    @ combine the various results
+    orr  r0, r2
+    orr  r0, r1  @ r0 holds eflags
 .endm
     """
+# TODO: use 'addMI r0, 1<<7', 'addEQ r1, 1<<6', 'addCS r2, 1', 'addVS r3, 1<<11', interleave
 
+##         ARM   X86
+# Sign/N   31     7
+# Zero     30     6
+# Carry    29     0
+# Overflow 28    11
+# parity    -     2 (result)
+# Adjust    -     4 (aux)
 
 
 

@@ -11,6 +11,7 @@ MAIN-INCLUDE := source/*.h
 
 FEMU-FLAGS := -ggdb -c -static -nostdlib -ffreestanding -std=gnu99 -fPIC -Os -Igen
 MAIN-FLAGS := -ggdb -c -std=c++11 -O0
+ASM-FLAGS  := -Wa,-mimplicit-it=thumb
 
 FEMU-SRCS := emu-main.c emu-lib.c
 MAIN-SRCS := main.cpp elf-file.cpp
@@ -37,7 +38,7 @@ gen/opcode-handlers.s gen/register-gdb-print gen/shared_constants.h: source/gene
 
 bin/opcode-handlers.o: gen/opcode-handlers.s
 	@mkdir -p bin
-	$(CC-FEMU) $(FEMU-FLAGS) gen/opcode-handlers.s -o bin/opcode-handlers.o
+	$(CC-FEMU) $(FEMU-FLAGS) $(ASM-FLAGS) gen/opcode-handlers.s -o bin/opcode-handlers.o
 
 femu: bin/elf-file.o bin/main.o
 	$(CC-MAIN) bin/elf-file.o bin/main.o -o femu
