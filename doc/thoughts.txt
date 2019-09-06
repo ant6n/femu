@@ -12,13 +12,13 @@ TODO
 + set up getopt for memory area to output
 + get unimplemented opcode
 + flags
-
-- set up tests for modrm (reg, mem, sib), possibly with streams of instructions
-- set up tests for jump and conditional jumps
++ fix debugging
 - split up genemu better
   - interpreter-architecture-independent gen definitions
   - architecture-dependent set up
   - architecture-independent helpers
+- set up tests for modrm (reg, mem, sib), possibly with streams of instructions
+- set up tests for jump and conditional jumps
 - implement some instructions
 - set up performance tests
 
@@ -31,6 +31,11 @@ TODO
 
 
 
+- genemu structure
+  - architecture independent
+     - parse opcode definitions like 'XX', 'XX+r', 'XX /rm', 'XX /d', 'XX XX imm32', 'XX rel8'
+     - [0F] [XX|oDDD] [+(r(8|16|32)?)|(st)] [(/d?m?(r|mmx)?)(8|16|32)] [imm(8|16|32)|rel(8|16|32)]
+     - (prefix) (opcode) (opcode-reg) (modop) (imm)
 
 - genemu - set up API to make it simpler to generate the asm equivalences, e.g.
      gen_1byte_reg(OPCODE, "push {reg}")
