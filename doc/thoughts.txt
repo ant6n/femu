@@ -35,7 +35,28 @@ TODO
   - architecture independent
      - parse opcode definitions like 'XX', 'XX+r', 'XX /rm', 'XX /d', 'XX XX imm32', 'XX rel8'
      - [0F] [XX|oDDD] [+(r(8|16|32)?)|(st)] [(/d?m?(r|mmx)?)(8|16|32)] [imm(8|16|32)|rel(8|16|32)]
-     - (prefix) (opcode) (opcode-reg) (modop) (imm)
+     - (prefix) (opcode)(opcode-meta) (opcode-reg) (modop) (imm)
+     - opcode-meta:
+         - direction: <: r<-mr, >: mr<-r
+         - +r: reg encoded in last 3 bits of opcode
+         - +d: direction encoded in last bit of opcode
+         - defining it's a byte-wise instruction (or is it better to define it in the ops?)
+  - class X86InstructionEncoding(s)?(general):
+     - parse/init
+     - generate all fixed encodings with 1/2 bytecodes
+  - when generating code, these are possible variables:
+     - r: register operand
+     - rm: the modrm operand
+     - src: source value (depends on direction)
+     - dst: destination register/value (depends on direction)
+     - m_address: the memory address pointed to by the rm address
+     - r8_shift: 0 for xL, 8 for xH registers
+  - when generating code, we can submit a string or a dictionary based on possibilities
+     - m: memory operand, r: register operand
+     - <,>: r<-mr, mr<-r
+     - H: for 8-bit registers, reg is high
+     - L: for 8 bit registers, reg is low
+     
 
 - genemu - set up API to make it simpler to generate the asm equivalences, e.g.
      gen_1byte_reg(OPCODE, "push {reg}")
@@ -146,8 +167,17 @@ level 2     -          |  -      |   -       |   -       |   -       |
 level 3     -          |  -      |   -       |   -       |   -       |
 level 4     -          |  -      |   -       |   -       |   -       |
 
+structures
+- what does eip store, is there a 'word'?
+   - no word, eip points to current
+   - word on current, eip points to current
+   - word on current+1, eip points to current+1
+   - word on current+2, eip points to current+2 - combined with merging single byte ops
+- how does nexthanlder work?
 
-need some performanc tests
+
+
+need some performance tests
 - various instructions
 - various complexities (helping/attacking the branch target buffer)
 
